@@ -194,10 +194,8 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 					progress.close()
 					return
 				if isinstance(doc, Chapter) and any([tag in doc.story.tags for tag in configuration.skip_tags]):
-					progress.update()
 					continue
 				if isinstance(doc, Story) and any([tag in doc.tags for tag in configuration.skip_tags]):
-					progress.update()
 					continue
 				index_action = doc.to_dict()
 				# e.g. <chapters-{now/d}>
