@@ -17,10 +17,11 @@ from elasticsearch_dsl import connections, Document
 from elasticsearch.helpers import streaming_bulk, BulkIndexError
 from elasticsearch.exceptions import ConnectionTimeout
 
-from ebooklib.epub import read_epub, EpubBook, EpubHtml
+from ebooklib.epub import read_epub, EpubBook
 from ebooklib import ITEM_DOCUMENT
 from collections.abc import Iterable
 from typing import Type
+from configargparse import Namespace
 
 from esdocs import Chapter, Story
 
@@ -287,7 +288,7 @@ def control_c_handler(signal, frame):
 		finished_processing_fics.set()
 
 
-if __name__ == "__main__":
+def load_config() -> Namespace:
 	my_config = Path(__file__).with_suffix(".ini")
 	ingest_config = ArgParser(default_config_files=[str(my_config)])
 	ingest_config.add_argument('-c', '--config', is_config_file=True, help='config file path')
@@ -303,7 +304,12 @@ if __name__ == "__main__":
 	ingest_config.add_argument("--story-count", type=int, default=0)
 	ingest_config.add_argument("--start-at", type=int, default=0)
 	ingest_config.add_argument("--skip-tags", action="append", default=["Anon", "Anthro", "Advisory"])
-	config_options = ingest_config.parse_args()
+	return ingest_config.parse_args()
+
+
+
+if __name__ == "__main__":
+	config_options = load_config()
 
 	setup_elasticsearch(config_options)
 	doc_belt = Queue(3) #barely needs to hold any items, most of the memory sink is in bulk_index

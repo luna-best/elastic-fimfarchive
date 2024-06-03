@@ -1,7 +1,7 @@
-from datetime import datetime
-from bs4 import BeautifulSoup
-from itertools import pairwise
 import logging
+from datetime import datetime
+from itertools import pairwise
+from bs4 import BeautifulSoup
 
 import elasticsearch_dsl as es_dsl_types
 from ebooklib.epub import EpubHtml

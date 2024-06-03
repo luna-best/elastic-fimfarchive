@@ -46,14 +46,25 @@ rWqamo7t52lhJbiT3jyRYdWxZgk9FCN6Z3NPInM99PM9HTLmANpssHNFjY9BWHOa/jpDwhY/DKoD
 ijAoAgAAAAAA4y0iUMJU3oMAAc0PvBQAAOi0+KCxxGf7AgAAAAAEWVo="""
 
 
-def generate_skip_blob() -> str:
+def generate_skips(blob: str = skipblob) -> Iterator[int]:
+	compressed_blob_b64 = blob.encode("ascii")
+	compressed_blob = b64decode(compressed_blob_b64)
+	bytestream = decompress(compressed_blob)
+	encoded_skips = iter_unpack("<H", bytestream)
+	first_id = next(encoded_skips)[0]
+	yield first_id
+	for adds in encoded_skips:
+		first_id += adds[0]
+		yield first_id
+
+
+if __name__ == "__main__":
 	"""
-	In order for this code to work correctly, you need to have imported the fimfarchive without using
-	the Advisory "magic" tag.  The script reads the advisory from disk, but it can be saved from, e.g.:
-	https://web.archive.org/web/20240419223159/https://fimfetch.net/foalcon-advisory
+	In order for this code to work correctly, you need to have imported the fimfarchive without skipping any stories,
+	especially without the Advisory "magic" tag.  The script reads the advisory from disk, but it can be saved from,
+	e.g.: https://web.archive.org/web/20240419223159/https://fimfetch.net/foalcon-advisory
 	Then it searches for the author ID - title pairs, with a little allowance for fuzziness
 	Any found pairs are stored as a list of story IDs, and then transformed into a blob which can be pasted in code
-	:return:
 	"""
 	from tomllib import loads
 	from itertools import pairwise
@@ -67,6 +78,17 @@ def generate_skip_blob() -> str:
 
 	my_config_path = Path(__file__).with_suffix(".ini")
 	my_config = loads(my_config_path.read_text())
+
+	"""
+	example advisory_skipper.ini:
+	advisory_html = "foalcon-advisory.html"
+
+	[elasticsearch]
+	hosts = [ "https://some-host:9200" ]
+	ca_cert = "/your/http_ca.crt"
+	username = "elasticsearch reader username"
+	password = "elasticsearch reader password"
+	"""
 
 	connections.create_connection(hosts=my_config["elasticsearch"]["hosts"],
 									ca_certs=my_config["elasticsearch"]["ca_cert"],
@@ -104,7 +126,7 @@ def generate_skip_blob() -> str:
 				# likely success: "When Things Change [Deleted]" -> "When Things Change (Deleted Scenes)"
 				# probably the 298 failures actually deleted and not in fimfarchive. good enough
 				failures.append({"id": author_id, "title": story_title, "hits": [hit._source["title"] for hit in res.hits.hits]})
-	ids_found.sort()
+	ids_found.sort() # thanks to the FiMFarchive for being ordered sequentially by story ID for this trick
 	first = ids_found[0]
 	deltas = list(map(lambda pair: pair[1] - pair[0], pairwise(ids_found)))
 	compress_this = [first]
@@ -112,20 +134,4 @@ def generate_skip_blob() -> str:
 	blob = pack(f"<{len(compress_this)}H", *compress_this)
 	compressed_blob = compress(blob)
 	b64 = encodebytes(compressed_blob).decode("ascii")
-	return b64
-
-
-def generate_skips() -> Iterator[int]:
-	compressed_blob_b64 = skipblob.encode("ascii")
-	compressed_blob = b64decode(compressed_blob_b64)
-	blob = decompress(compressed_blob)
-	encoded_skips = iter_unpack("<H", blob)
-	first_id = next(encoded_skips)[0]
-	yield first_id
-	for adds in encoded_skips:
-		first_id += adds[0]
-		yield first_id
-
-
-if __name__ == "__main__":
-	print(generate_skip_blob())
+	print(b64)

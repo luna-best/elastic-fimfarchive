@@ -1,5 +1,7 @@
 ConfigArgParse
 EbookLib==0.17.1
-elasticsearch
 elasticsearch-dsl
 tqdm
+lxml
+beautifulsoup4
+statsmodels
