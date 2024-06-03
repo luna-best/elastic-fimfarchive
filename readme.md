@@ -51,6 +51,7 @@ Create a [space](https://www.elastic.co/guide/en/kibana/current/xpack-spaces.htm
 | `timepicker:quickRanges`  | `[]`                                                      |
 | `defaultColumns`          | `story.author.name, story.title, story.id, chapter.title` |
 
+When searching for chapters by their content, it's helpful to add the meta field `_score` to the sorted fields and remove the publish date.
 
 ### Configuration
 See [`index-fics.example.ini`](index-fics.example.ini) for an example configuration.  All configuration settings are accepted as command line options as well, run `python index-fics.py --help` to see them. For authentication, you can choose either the API token mode or the user/pass mode. If you input both, the script will prefer the token mode.  There are three ways for skipping content in the zip file:
