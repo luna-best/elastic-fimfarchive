@@ -1,5 +1,5 @@
 # Elasticsearch FiMfarchive
-This is a script which may be used to import the contents of the [FiMfarchive](https://www.fimfiction.net/user/116950/Fimfarchive) zip file into an [Elasticsearch](https://www.elastic.co/guide/) cluster.
+This is a script which may be used to import the contents of the [FiMfarchive](https://www.fimfiction.net/user/116950/Fimfarchive) zip file into an [Elasticsearch](https://www.elastic.co/guide/) cluster.  It requires Python 3.10 or newer and Elasticsearch 8 or newer.
 
 ## How to use it:
 
