@@ -1,7 +1,7 @@
 import logging
 from json import loads
 from collections import namedtuple
-from zipfile import ZipFile
+from zipfile import ZipFile, ZIP_DEFLATED, BadZipfile, LargeZipFile
 from re import compile
 from io import TextIOWrapper
 from threading import Thread, Event
@@ -18,7 +18,7 @@ from elasticsearch_dsl import connections, Document
 from elasticsearch.helpers import streaming_bulk, BulkIndexError
 from elasticsearch.exceptions import ConnectionTimeout
 
-from ebooklib.epub import read_epub, EpubBook
+from ebooklib.epub import read_epub, EpubBook, EpubException, EpubReader
 from ebooklib import ITEM_DOCUMENT
 from collections.abc import Iterable
 from typing import Type
@@ -300,14 +300,12 @@ def control_c_handler(signal, frame):
 
 
 def hack_epublib():
-	import zipfile
-	from ebooklib.epub import EpubException
 	def old_load(self):
 		try:
-			self.zf = zipfile.ZipFile(self.file_name, 'r', compression=zipfile.ZIP_DEFLATED, allowZip64=True)
-		except zipfile.BadZipfile as bz:
+			self.zf = ZipFile(self.file_name, 'r', compression=ZIP_DEFLATED, allowZip64=True)
+		except BadZipfile as bz:
 			raise EpubException(0, 'Bad Zip file')
-		except zipfile.LargeZipFile as bz:
+		except LargeZipFile as bz:
 			raise EpubException(1, 'Large Zip file')
 
 		# 1st check metadata
@@ -315,8 +313,6 @@ def hack_epublib():
 		self._load_opf_file()
 
 		self.zf.close()
-
-	from ebooklib.epub import EpubReader
 	EpubReader._load = old_load
 
 
