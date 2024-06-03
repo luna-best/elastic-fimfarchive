@@ -5,7 +5,7 @@ from zipfile import ZipFile
 from re import compile
 from io import TextIOWrapper
 from threading import Thread, Event
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 from signal import signal, SIGINT
 from datetime import datetime
 from pathlib import Path
@@ -199,7 +199,16 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 				index_action = doc.to_dict()
 				# e.g. <chapters-{now/d}>
 				index_action["_index"] = f"<{doc._index._name[:-1]}" + "{now/d}>"
-				es_queue.put(index_action)
+				waiting = True
+				while waiting:
+					try:
+						es_queue.put(index_action, timeout=0.1)
+						waiting = False
+					except Full:
+						if stop_event.is_set():
+							progress.close()
+							return
+
 			progress.update()
 	stop_event.set()
 
@@ -218,8 +227,10 @@ def setup_elasticsearch(configuration):
 											ca_certs=configuration.es_ca_cert_path,
 											request_timeout=600, #high timeout is critical for bulk indexing!
 											**authentication)
-	es_logger = logging.getLogger("elasticsearch")
-	es_logger.setLevel(logging.WARNING)
+	# es_logger = logging.getLogger("elasticsearch")
+	# es_logger.setLevel(logging.WARNING)
+	es_transport_logger = logging.getLogger('elastic_transport.transport')
+	es_transport_logger.setLevel(logging.WARNING)
 	traffic_logger = logging.getLogger("urllib3")
 	traffic_logger.setLevel(logging.WARNING) #debug level will log the whole request body...
 	store_composable_template(Chapter)
@@ -312,7 +323,7 @@ if __name__ == "__main__":
 	config_options = load_config()
 
 	setup_elasticsearch(config_options)
-	doc_belt = Queue(3) #barely needs to hold any items, most of the memory sink is in bulk_index
+	doc_belt = Queue(5) # needs to hold about 0.1 seconds worth of chapters
 	finished_processing_fics = Event()
 	doc_eater = Thread(target=bulk_index, args=(doc_belt, finished_processing_fics), name="doc eater")
 	doc_maker = Thread(target=process_fics, args=(config_options, doc_belt, finished_processing_fics), name="doc maker")
