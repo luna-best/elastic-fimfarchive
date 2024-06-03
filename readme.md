@@ -48,8 +48,7 @@ See [`index-fics.example.ini`](index-fics.example.ini) for an example configurat
 2. Select tags to skip.  The tag names match the site's interface; by default the script skips "Anthro" stories.
 3. The magic tag "Advisory" for the Foalcon Advisory.  If you don't know what that is, leave it skipped.
 
-####
-Various hacking notes:
+#### Various hacking notes:
 
 The script is intended to run on Linux. It might run on Windows, who knows?  Adding threads to the script sped up the indexing speed immensely, but also made it hard to stop.  On Linux, you may have to press Ctrl-C twice to kill it.
 
