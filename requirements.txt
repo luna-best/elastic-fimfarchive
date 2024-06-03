@@ -1,5 +1,5 @@
 ConfigArgParse
-EbookLib==0.17.1
+EbookLib
 elasticsearch-dsl
 tqdm
 lxml

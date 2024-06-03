@@ -10,6 +10,7 @@ from signal import signal, SIGINT
 from datetime import datetime
 from pathlib import Path
 from math import inf
+from warnings import catch_warnings, simplefilter
 
 from tqdm import tqdm
 from configargparse import ArgParser, FileType
@@ -183,7 +184,10 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 			if story_meta["id"] < configuration.start_at:
 				progress.update()
 				continue
-			book = read_epub(story_epub)
+			with catch_warnings():
+				simplefilter(action="ignore", category=FutureWarning) # ebooklib/epub.py:1423 xml root element warning
+				simplefilter(action="ignore", category=UserWarning) # ebooklib/epub.py:1395 useless warning about ignoring ncx
+				book = read_epub(story_epub)
 			story = UnanalyzedStory(story_meta, book, first_checked)
 			for doc in story.analyze():
 				if stop_event.is_set():
@@ -295,6 +299,27 @@ def control_c_handler(signal, frame):
 		finished_processing_fics.set()
 
 
+def hack_epublib():
+	import zipfile
+	from ebooklib.epub import EpubException
+	def old_load(self):
+		try:
+			self.zf = zipfile.ZipFile(self.file_name, 'r', compression=zipfile.ZIP_DEFLATED, allowZip64=True)
+		except zipfile.BadZipfile as bz:
+			raise EpubException(0, 'Bad Zip file')
+		except zipfile.LargeZipFile as bz:
+			raise EpubException(1, 'Large Zip file')
+
+		# 1st check metadata
+		self._load_container()
+		self._load_opf_file()
+
+		self.zf.close()
+
+	from ebooklib.epub import EpubReader
+	EpubReader._load = old_load
+
+
 def load_config() -> Namespace:
 	my_config = Path(__file__).with_suffix(".ini")
 	ingest_config = ArgParser(default_config_files=[str(my_config)])
@@ -317,7 +342,7 @@ def load_config() -> Namespace:
 
 if __name__ == "__main__":
 	config_options = load_config()
-
+	hack_epublib()
 	setup_elasticsearch(config_options)
 	# minimum: 0.1 seconds worth of chapters
 	# maximum: the time it takes for Elasticsearch to accept one bulk request
