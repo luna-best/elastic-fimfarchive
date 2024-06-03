@@ -141,7 +141,6 @@ class UnanalyzedStory:
 
 
 def process_fics(configuration, es_queue: Queue, stop_event: Event):
-	global finished_processing_fics
 	zip_file = ZipFile(configuration.fimfarchive)
 	story_feed = StoryFeed(zip_file)
 	print("Warnings will be logged to ./ingest.log.")
