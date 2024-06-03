@@ -6,8 +6,8 @@ This is a script which may be used to import the contents of the [FiMfarchive](h
 In general, the steps are to:
 1. Download the script into a Python virtual environment
 2. Create a read and write user in your Elasticsearch instance
-3. Configure the script (see index-fics.example.ini)
-4. Execute index-fics.py
+3. Configure the script (see [`index-fics.example.ini`](index-fics.example.ini))
+4. Execute `index-fics.py`
 
 ## How it works
 
@@ -48,8 +48,7 @@ See [`index-fics.example.ini`](index-fics.example.ini) for an example configurat
 2. Select tags to skip.  The tag names match the site's interface; by default the script skips "Anthro" stories.
 3. The magic tag "Advisory" for the Foalcon Advisory.  If you don't know what that is, leave it skipped.
 
-####
-Various hacking notes:
+#### Various hacking notes:
 
 The script is intended to run on Linux. It might run on Windows, who knows?  Adding threads to the script sped up the indexing speed immensely, but also made it hard to stop.  On Linux, you may have to press Ctrl-C twice to kill it.
 
