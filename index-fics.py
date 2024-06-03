@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from math import inf
 from warnings import catch_warnings, simplefilter
+from dataclasses import dataclass
 
 from tqdm import tqdm
 from configargparse import ArgParser, FileType
@@ -18,7 +19,7 @@ from elasticsearch_dsl import connections, Document
 from elasticsearch.helpers import streaming_bulk, BulkIndexError
 from elasticsearch.exceptions import ConnectionTimeout
 
-from ebooklib.epub import read_epub, EpubBook, EpubException, EpubReader
+from ebooklib.epub import EpubBook, EpubException, EpubReader
 from ebooklib import ITEM_DOCUMENT
 from collections.abc import Iterable
 from typing import Type
@@ -59,24 +60,19 @@ class StoryFeed:
 			data_start = almost_a_line.find("{")
 		return # }
 
-
+@dataclass
 class UnanalyzedStory:
-	author_data: dict
-	chapters_data: list[dict]
-	epub_data: EpubBook
-	chapter_filename_pattern = compile(r"(Chapter(?P<simple_chapter_number>\d+)\.html)|"
-									r"(Chapter(?P<split_chapter_number>\d+)_split_(?P<split_number>\d{3})\.html)")
-	whitespace_pattern = compile(r"[\s]+")
-	UnanalyzedChapter = namedtuple("UnanalyzedChapter", ["number", "title", "href"])
+	story_meta: dict
+	epub_data: EpubReader
+	archive_date: datetime
 
-	def __init__(self, story_meta: dict, epub, archive_date: datetime):
-		self.author_data = story_meta["author"]
-		self.chapters_data = story_meta["chapters"]
-		self.epub_data = epub
-		self.epub_path = story_meta["archive"]["path"]
-		self.url = story_meta["url"]
-		self.story_meta = story_meta
-		self.archive_date = archive_date
+	def __post_init__(self):
+		self.chapters_data = self.story_meta["chapters"]
+		self.epub_path = self.story_meta["archive"]["path"]
+		self.chapter_filename_pattern = compile(r"(Chapter(?P<simple_chapter_number>\d+)\.html)|"
+										r"(Chapter(?P<split_chapter_number>\d+)_split_(?P<split_number>\d{3})\.html)")
+		self.whitespace_pattern = compile(r"[\s]+")
+		self.UnanalyzedChapter = namedtuple("UnanalyzedChapter", ["number", "title", "href"])
 
 	def analyze(self):
 		# this section would be sped up by maintaining the chapter *file* order in the .epub in its output (never seek backwards)
@@ -139,6 +135,29 @@ class UnanalyzedStory:
 			yield es_story
 
 
+class HackedEpubReader(EpubReader):
+	def _load(self):
+		try:
+			self.zf = ZipFile(self.file_name, 'r', compression=ZIP_DEFLATED, allowZip64=True)
+		except BadZipfile as bz:
+			raise EpubException(0, 'Bad Zip file')
+		except LargeZipFile as bz:
+			raise EpubException(1, 'Large Zip file')
+
+		# 1st check metadata
+		self._load_container()
+		self._load_opf_file()
+
+		self.zf.close()
+
+
+def read_epub(name, options=None) -> EpubReader:
+	reader = HackedEpubReader(name, options)
+	book = reader.load()
+	reader.process()
+	return book
+
+
 def process_fics(configuration, es_queue: Queue, stop_event: Event):
 	zip_file = ZipFile(configuration.fimfarchive)
 	story_feed = StoryFeed(zip_file)
@@ -187,7 +206,7 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 			with catch_warnings():
 				simplefilter(action="ignore", category=FutureWarning) # ebooklib/epub.py:1423 xml root element warning
 				simplefilter(action="ignore", category=UserWarning) # ebooklib/epub.py:1395 useless warning about ignoring ncx
-				book = read_epub(story_epub)
+				book = read_epub(story_epub, {"ignore_ncx": False})
 			story = UnanalyzedStory(story_meta, book, first_checked)
 			for doc in story.analyze():
 				if stop_event.is_set():
@@ -297,23 +316,6 @@ def control_c_handler(signal, frame):
 		finished_processing_fics.set()
 
 
-def hack_epublib():
-	def old_load(self):
-		try:
-			self.zf = ZipFile(self.file_name, 'r', compression=ZIP_DEFLATED, allowZip64=True)
-		except BadZipfile as bz:
-			raise EpubException(0, 'Bad Zip file')
-		except LargeZipFile as bz:
-			raise EpubException(1, 'Large Zip file')
-
-		# 1st check metadata
-		self._load_container()
-		self._load_opf_file()
-
-		self.zf.close()
-	EpubReader._load = old_load
-
-
 def load_config() -> Namespace:
 	my_config = Path(__file__).with_suffix(".ini")
 	ingest_config = ArgParser(default_config_files=[str(my_config)])
@@ -333,10 +335,8 @@ def load_config() -> Namespace:
 	return ingest_config.parse_args()
 
 
-
 if __name__ == "__main__":
 	config_options = load_config()
-	hack_epublib()
 	setup_elasticsearch(config_options)
 	# minimum: 0.1 seconds worth of chapters
 	# maximum: the time it takes for Elasticsearch to accept one bulk request
