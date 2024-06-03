@@ -289,7 +289,7 @@ def control_c_handler(signal, frame):
 
 if __name__ == "__main__":
 	my_config = Path(__file__).with_suffix(".ini")
-	ingest_config = ArgParser(default_config_files=[my_config])
+	ingest_config = ArgParser(default_config_files=[str(my_config)])
 	ingest_config.add_argument('-c', '--config', is_config_file=True, help='config file path')
 	api_auth_config = ingest_config.add_argument_group(title="API authentication (will be preferred if both are set)")
 	basic_auth_config = ingest_config.add_argument_group(title="Basic authentication")
@@ -302,7 +302,7 @@ if __name__ == "__main__":
 	ingest_config.add_argument("--fimfarchive", type=FileType("rb"), required=True)
 	ingest_config.add_argument("--story-count", type=int, default=0)
 	ingest_config.add_argument("--start-at", type=int, default=0)
-	ingest_config.add_argument("--skip-tags", action="append", default=["Anthro", "Advisory"])
+	ingest_config.add_argument("--skip-tags", action="append", default=["Anon", "Anthro", "Advisory"])
 	config_options = ingest_config.parse_args()
 
 	setup_elasticsearch(config_options)
