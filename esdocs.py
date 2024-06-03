@@ -214,9 +214,9 @@ class Story(es_dsl_types.Document):
 			setattr(self, attr, getattr(source.story, attr))
 
 		if story_meta["description_html"]:
-			desc_dom = BeautifulSoup(story_meta["description_html"], "html.parser") # likely to have a single <p>
+			desc_dom = BeautifulSoup(story_meta["description_html"], "html.parser") # likely consist of a single <p>
 			self.description.long = desc_dom.text
-			self.description.short = story_meta["short_description"]
+		self.description.short = story_meta["short_description"]
 
 		try:
 			date_checked = datetime.fromisoformat(story_meta["archive"]["date_fetched"])

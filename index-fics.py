@@ -78,6 +78,7 @@ class UnanalyzedStory:
 		self.archive_date = archive_date
 
 	def analyze(self):
+		# this section would be sped up by maintaining the chapter *file* order in the .epub in its output (never seek backwards)
 		#first layer of merging. the epub chapter files may be
 		# regular: 'Chapter1.html'
 		# or split: 'Chapter19_split_000.html' , 'Chapter19_split_001.html'
@@ -130,12 +131,8 @@ class UnanalyzedStory:
 		for chapter in chapter_map:
 			es_chapter = Chapter()
 			es_chapter.analyze(chapter, self.story_meta, self.chapters_data)
-			#es_chapter.save(index="<chapters-{now/d}>", request_timeout=300)
 			yield es_chapter
 		else:
-			if not es_chapter:
-				logging.warning("somehow, chapterless story {id}?".format_map(self.story_meta))
-				return
 			es_story = Story()
 			es_story.analyze(es_chapter, self.story_meta, self.archive_date)
 			yield es_story
@@ -193,8 +190,10 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 					progress.close()
 					return
 				if isinstance(doc, Chapter) and any([tag in doc.story.tags for tag in configuration.skip_tags]):
+					progress.update()
 					continue
 				if isinstance(doc, Story) and any([tag in doc.tags for tag in configuration.skip_tags]):
+					progress.update()
 					continue
 				index_action = doc.to_dict()
 				# e.g. <chapters-{now/d}>
@@ -225,14 +224,12 @@ def setup_elasticsearch(configuration):
 	# https://elasticsearch-py.readthedocs.io/en/stable/api/elasticsearch.html#elasticsearch
 	conn = connections.create_connection(hosts=configuration.es_hosts,
 											ca_certs=configuration.es_ca_cert_path,
-											request_timeout=600, #high timeout is critical for bulk indexing!
+											request_timeout=600, # high timeout is critical for bulk indexing!
 											**authentication)
-	# es_logger = logging.getLogger("elasticsearch")
-	# es_logger.setLevel(logging.WARNING)
 	es_transport_logger = logging.getLogger('elastic_transport.transport')
-	es_transport_logger.setLevel(logging.WARNING)
+	es_transport_logger.setLevel(logging.WARNING) # don't log every single request to ES...
 	traffic_logger = logging.getLogger("urllib3")
-	traffic_logger.setLevel(logging.WARNING) #debug level will log the whole request body...
+	traffic_logger.setLevel(logging.WARNING) # debug level will log the whole request body...
 	store_composable_template(Chapter)
 	store_composable_template(Story)
 
@@ -248,7 +245,6 @@ def store_composable_template(doc_class: Type[Document]):
 	legacy_index_template["mappings"]["dynamic"] = "strict"
 	template_name = f"elasticfics-{index_prefix}"
 	print(f"Saving index template for {index_wild} with {nodes} shards")
-	#conn.cluster.put_component_template(name=template_name, )
 	conn.indices.put_index_template(name=template_name, template=legacy_index_template, index_patterns=[index_wild])
 
 
@@ -323,7 +319,9 @@ if __name__ == "__main__":
 	config_options = load_config()
 
 	setup_elasticsearch(config_options)
-	doc_belt = Queue(5) # needs to hold about 0.1 seconds worth of chapters
+	# minimum: 0.1 seconds worth of chapters
+	# maximum: the time it takes for Elasticsearch to accept one bulk request
+	doc_belt = Queue(5)
 	finished_processing_fics = Event()
 	doc_eater = Thread(target=bulk_index, args=(doc_belt, finished_processing_fics), name="doc eater")
 	doc_maker = Thread(target=process_fics, args=(config_options, doc_belt, finished_processing_fics), name="doc maker")
