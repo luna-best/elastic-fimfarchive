@@ -22,8 +22,9 @@ from elasticsearch.exceptions import ConnectionTimeout
 from ebooklib.epub import EpubBook, EpubException, EpubReader
 from ebooklib import ITEM_DOCUMENT
 from collections.abc import Iterable
-from typing import Type
+from typing import Type, ClassVar, NamedTuple
 from configargparse import Namespace
+from re import Pattern
 
 from esdocs import Chapter, Story
 
@@ -65,14 +66,14 @@ class UnanalyzedStory:
 	story_meta: dict
 	epub_data: EpubReader
 	archive_date: datetime
+	whitespace_pattern: ClassVar[Pattern] = compile(r"[\s]+")
+	UnanalyzedChapter: ClassVar[NamedTuple] = namedtuple("UnanalyzedChapter", ["number", "title", "href"])
 
 	def __post_init__(self):
 		self.chapters_data = self.story_meta["chapters"]
 		self.epub_path = self.story_meta["archive"]["path"]
 		self.chapter_filename_pattern = compile(r"(Chapter(?P<simple_chapter_number>\d+)\.html)|"
 										r"(Chapter(?P<split_chapter_number>\d+)_split_(?P<split_number>\d{3})\.html)")
-		self.whitespace_pattern = compile(r"[\s]+")
-		self.UnanalyzedChapter = namedtuple("UnanalyzedChapter", ["number", "title", "href"])
 
 	def analyze(self):
 		# this section would be sped up by maintaining the chapter *file* order in the .epub in its output (never seek backwards)
