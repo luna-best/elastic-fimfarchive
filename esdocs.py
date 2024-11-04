@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from itertools import pairwise
 from bs4 import BeautifulSoup
 
@@ -7,6 +7,7 @@ import elasticsearch_dsl as es_dsl_types
 from ebooklib.epub import EpubHtml
 from statsmodels.stats.proportion import proportion_confint
 from typing import Union
+from folders import GroupInfo
 
 class DocStoryAuthor(es_dsl_types.InnerDoc):
 	id = es_dsl_types.Integer(meta={"source": "author.id"})
@@ -19,6 +20,14 @@ class DocStoryScore(es_dsl_types.InnerDoc):
 	likes = es_dsl_types.Integer(meta={"source": "num_likes"})
 	dislikes = es_dsl_types.Integer(meta={"source": "num_dislikes"})
 
+class DocStoryGroups(es_dsl_types.InnerDoc):
+	names = es_dsl_types.Text(multi=True, meta={"source": "github.com/uis246/fimfarc-search"})
+	ids = es_dsl_types.Integer(multi=True, meta={"source": "github.com/uis246/fimfarc-search"})
+
+class DocStoryFolders(es_dsl_types.InnerDoc):
+	names = es_dsl_types.Text(multi=True, meta={"source": "github.com/uis246/fimfarc-search"})
+	ids = es_dsl_types.Integer(multi=True, meta={"source": "github.com/uis246/fimfarc-search"})
+
 class DocStory(es_dsl_types.InnerDoc):
 	author = es_dsl_types.Object(DocStoryAuthor)
 	words = es_dsl_types.Integer(meta={"source": "num_words"})
@@ -30,6 +39,8 @@ class DocStory(es_dsl_types.InnerDoc):
 	title = es_dsl_types.Text(meta={"source": "title"})
 	published = es_dsl_types.Date(meta={"source": "date_published"})
 	views = es_dsl_types.Long(meta={"source": "num_views"})
+	groups = es_dsl_types.Object(DocStoryGroups)
+	folders = es_dsl_types.Object(DocStoryFolders)
 
 class DocChapter(es_dsl_types.InnerDoc):
 	number = es_dsl_types.Short(meta={"source": "chapters.chapter_number or epub"})
@@ -39,6 +50,7 @@ class DocChapter(es_dsl_types.InnerDoc):
 	title = es_dsl_types.Text(meta={"source": "epub or chapters.title"})
 	text = es_dsl_types.Text(meta={"source": "epub"})
 	ghost = es_dsl_types.Text(meta={"source": "epub and chapters"})
+	views = es_dsl_types.Long(meta={"source": "chapters.num_views"})
 
 class Chapter(es_dsl_types.Document):
 	chapter = es_dsl_types.Object(DocChapter)
@@ -89,7 +101,7 @@ class Chapter(es_dsl_types.Document):
 		posterior_mean = posterior_a / (posterior_a + posterior_b)
 		return posterior_mean, left_endpoint, right_endpoint
 
-	def fill_story_author_meta(self, story_meta: dict):
+	def fill_story_author_meta(self, story_meta: dict, groups_info: Union[GroupInfo, bool]):
 		self.story.author.id = story_meta["author"]["id"]
 		self.story.author.name = story_meta["author"]["name"]
 		self.story.words = story_meta["num_words"]
@@ -98,13 +110,18 @@ class Chapter(es_dsl_types.Document):
 		self.story.id = story_meta["id"]
 		self.story.published = story_meta["date_published"]
 		self.story.views = story_meta["num_views"]
-		self.story.tags = [ tag["name"] for tag in story_meta["tags"]]
+		self.story.tags = [tag["name"] for tag in story_meta["tags"]]
 		self.story.title = story_meta["title"]
 		self.calculate_scores(story_meta["num_likes"], story_meta["num_dislikes"])
 		#from -1 as perfect dislike ratio to +1 as perfect like ratio, no rating as null
 		if any(reaction > 0 for reaction in [story_meta["num_dislikes"], story_meta["num_likes"]]):
 			self.story.score.ratio = (story_meta["num_likes"] - story_meta["num_dislikes"]) / \
 								(story_meta["num_likes"] + story_meta["num_dislikes"])
+		if groups_info:
+			self.story.groups.ids = list(groups_info.group_ids)
+			self.story.groups.names = list(groups_info.group_names)
+			self.story.folders.ids = list(groups_info.folder_ids)
+			self.story.folders.names = list(groups_info.paths)
 
 	def fill_chapter_meta_full(self, title: str, number: int, chapter_data: dict):
 		self.chapter.title = title
@@ -115,16 +132,18 @@ class Chapter(es_dsl_types.Document):
 		if chapter_data["date_published"]:
 			self.chapter.published = chapter_data["date_published"]
 		if self.chapter.published is None: # second fallback is index time
-			self.chapter.published = datetime.utcnow()
+			self.chapter.published = datetime.now(UTC)
 		self.chapter.words = chapter_data["num_words"]
 		self.chapter.id = chapter_data["id"]
+		if chapter_data["num_views"]:
+			self.chapter.views = chapter_data["num_views"]
 	
 	def fill_chapter_meta_sparse(self, title: str, number: int, ghost_message: str):
 		self.chapter.title = title
 		self.chapter.number = number #it is decremented in analyze() below
 		self.chapter.ghost = ghost_message
 		# it's already known that the publish date is missing, go straight to the final fallback
-		self.chapter.published = datetime.utcnow()
+		self.chapter.published = datetime.now(UTC)
 
 	@staticmethod
 	def try_to_find_title(chapter_dom) -> Union[str, None]:
@@ -136,8 +155,8 @@ class Chapter(es_dsl_types.Document):
 				h1.clear() #small % chance to remove an actual in-story <h1>... meh
 				return title
 
-	def analyze(self, chapter, story_meta: dict, chapters_data: list):
-		self.fill_story_author_meta(story_meta)
+	def analyze(self, chapter, story_meta: dict, chapters_data: list, groups_info: Union[GroupInfo, bool]):
+		self.fill_story_author_meta(story_meta, groups_info)
 		if chapter.number >= 0:
 			self.fill_chapter_meta_full(chapter.title, chapter.number, chapters_data[chapter.number])
 		else:
@@ -199,6 +218,8 @@ class Story(es_dsl_types.Document):
 	description = es_dsl_types.Object(DocStoryDescription)
 	deleted = es_dsl_types.Boolean(meta={"source": "archive.date_fetched"})
 	publish_gaps = es_dsl_types.IntegerRange(meta={"source": "chapters.date_published"})
+	groups = es_dsl_types.Object(DocStoryGroups)
+	folders = es_dsl_types.Object(DocStoryFolders)
 
 	class Index:
 		name = "stories-*"
@@ -209,7 +230,9 @@ class Story(es_dsl_types.Document):
 		}
 
 	def analyze(self, source: Chapter, story_meta: dict, archive_date: datetime):
-		direct_copies = ["author", "words", "completion_status", "content_rating", "score", "tags", "title", "published", "views", "id"]
+		direct_copies = ["author", "words", "completion_status",
+							"content_rating", "score", "tags", "title",
+							"published", "views", "id", "groups", "folders"]
 		for attr in direct_copies:
 			setattr(self, attr, getattr(source.story, attr))
 

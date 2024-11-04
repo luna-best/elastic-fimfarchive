@@ -19,14 +19,16 @@ from elasticsearch_dsl import connections, Document
 from elasticsearch.helpers import streaming_bulk, BulkIndexError
 from elasticsearch.exceptions import ConnectionTimeout
 
-from ebooklib.epub import EpubBook, EpubException, EpubReader
+from ebooklib.epub import EpubException, EpubReader
 from ebooklib import ITEM_DOCUMENT
 from collections.abc import Iterable
-from typing import Type, ClassVar, NamedTuple
+from typing import Type, ClassVar, NamedTuple, Union
 from configargparse import Namespace
 from re import Pattern
 
 from esdocs import Chapter, Story
+from folders import GroupMeta
+
 
 class StoryFeed:
 	zip_source: ZipFile
@@ -66,6 +68,7 @@ class UnanalyzedStory:
 	story_meta: dict
 	epub_data: EpubReader
 	archive_date: datetime
+	group_db: Union[GroupMeta, bool]
 	whitespace_pattern: ClassVar[Pattern] = compile(r"[\s]+")
 	UnanalyzedChapter: ClassVar[NamedTuple] = namedtuple("UnanalyzedChapter", ["number", "title", "href"])
 
@@ -126,9 +129,14 @@ class UnanalyzedStory:
 			else:
 				chapter_map.append(self.UnanalyzedChapter(unsplitted_index * -1, epub_link.title, epub_chapter))
 
+		if self.group_db:
+			groups_info = self.group_db.groups4story(self.story_meta["id"])
+		else:
+			groups_info = False
+
 		for chapter in chapter_map:
 			es_chapter = Chapter()
-			es_chapter.analyze(chapter, self.story_meta, self.chapters_data)
+			es_chapter.analyze(chapter, self.story_meta, self.chapters_data, groups_info)
 			yield es_chapter
 		else:
 			es_story = Story()
@@ -180,6 +188,11 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 	else:
 		id_to_skip = inf
 
+	if configuration.folders_db:
+		group_db = GroupMeta(configuration.folders_db)
+	else:
+		group_db = False
+
 	for story_meta in story_feed.stories():
 		if stop_event.is_set():
 			progress.close()
@@ -197,40 +210,39 @@ def process_fics(configuration, es_queue: Queue, stop_event: Event):
 			except StopIteration:
 				id_to_skip = inf
 
+		story_file = story_file_pattern.match(story_meta["archive"]["path"]).group("story_file") #file name sans .epub
+		story_file_short = f"{story_file[-story_file_max_length:]}" #the tail end of the filename, if it is long
+		progress.set_description(f"{story_file_short:>{story_file_max_length}}") #left pad in case the name is short
+		if story_meta["id"] < configuration.start_at:
+			progress.update()
+			continue
 		with zip_file.open(story_meta["archive"]["path"]) as story_epub:
-			story_file = story_file_pattern.match(story_meta["archive"]["path"]).group("story_file") #file name sans .epub
-			story_file_short = f"{story_file[-story_file_max_length:]}" #the tail end of the filename, if it is long
-			progress.set_description(f"{story_file_short:>{story_file_max_length}}") #left pad in case the name is short
-			if story_meta["id"] < configuration.start_at:
-				progress.update()
-				continue
 			with catch_warnings():
 				simplefilter(action="ignore", category=FutureWarning) # ebooklib/epub.py:1423 xml root element warning
 				simplefilter(action="ignore", category=UserWarning) # ebooklib/epub.py:1395 useless warning about ignoring ncx
 				book = read_epub(story_epub, {"ignore_ncx": False})
-			story = UnanalyzedStory(story_meta, book, first_checked)
-			for doc in story.analyze():
-				if stop_event.is_set():
-					progress.close()
-					return
-				if isinstance(doc, Chapter) and any([tag in doc.story.tags for tag in configuration.skip_tags]):
-					continue
-				if isinstance(doc, Story) and any([tag in doc.tags for tag in configuration.skip_tags]):
-					continue
-				index_action = doc.to_dict()
-				# e.g. <chapters-{now/d}>
-				index_action["_index"] = f"<{doc._index._name[:-1]}" + "{now/d}>"
-				waiting = True
-				while waiting:
-					try:
-						es_queue.put(index_action, timeout=0.1)
-						waiting = False
-					except Full:
-						if stop_event.is_set():
-							progress.close()
-							return
-
-			progress.update()
+		story = UnanalyzedStory(story_meta, book, first_checked, group_db)
+		for doc in story.analyze():
+			if stop_event.is_set():
+				progress.close()
+				return
+			if isinstance(doc, Chapter) and any([tag in doc.story.tags for tag in configuration.skip_tags]):
+				break
+			if isinstance(doc, Story) and any([tag in doc.tags for tag in configuration.skip_tags]):
+				break
+			index_action = doc.to_dict()
+			# e.g. <chapters-{now/d}>
+			index_action["_index"] = f"<{doc._index._name[:-1]}" + "{now/d}>"
+			waiting = True
+			while waiting:
+				try:
+					es_queue.put(index_action, timeout=0.1)
+					waiting = False
+				except Full:
+					if stop_event.is_set():
+						progress.close()
+						return
+		progress.update()
 	stop_event.set()
 
 
@@ -333,6 +345,7 @@ def load_config() -> Namespace:
 	ingest_config.add_argument("--story-count", type=int, default=0)
 	ingest_config.add_argument("--start-at", type=int, default=0)
 	ingest_config.add_argument("--skip-tags", action="append", default=["Anon", "Anthro", "Advisory"])
+	ingest_config.add_argument("--folders-db")
 	return ingest_config.parse_args()
 
 
