@@ -5,7 +5,6 @@ from datetime import datetime, UTC
 from html import unescape
 from collections import namedtuple
 from pony import orm
-from pygments.lexer import default
 from tqdm import tqdm
 from pickle import loads, dumps, HIGHEST_PROTOCOL
 
