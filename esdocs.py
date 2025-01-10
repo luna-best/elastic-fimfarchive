@@ -4,9 +4,10 @@ from itertools import pairwise
 from bs4 import BeautifulSoup
 
 import elasticsearch_dsl as es_dsl_types
+from elasticsearch_dsl import Q
 from ebooklib.epub import EpubHtml
 from statsmodels.stats.proportion import proportion_confint
-from typing import Union
+from typing import Union, Iterable, SupportsIndex
 from folders import GroupInfo
 
 class DocStoryAuthor(es_dsl_types.InnerDoc):
@@ -62,7 +63,7 @@ class Chapter(es_dsl_types.Document):
 			#"codec": "best_compression", #compression slows it down by 1/5 and reduces the index size by 1/3
 			"number_of_replicas": 0,
 			#"refresh_interval": "60s",
-			"query.default_field": "story.title"
+			"query": {"default_field": "story.title"}
 		}
 
 	def calculate_scores(self, up: int, down: int):
@@ -198,6 +199,25 @@ class Chapter(es_dsl_types.Document):
 			if h1.text == title:
 				h1.clear()
 
+	@classmethod
+	def get_multi_texts(cls, story_id: int, chapter_nos: Iterable[int]) -> dict[int, str]:
+		chapter_matches = [
+			Q("term", chapter__number=chapter)
+			for chapter in chapter_nos
+		]
+		story_filter = Q("term", story__id=story_id)
+		chapter_filter = Q("bool", must=story_filter, should=chapter_matches, minimum_should_match=1)
+		search = Chapter.search()
+		search = search.params(source=["chapter.number", "chapter.text", "chapter.id"], size=len(chapter_nos))
+		search = search.filter(chapter_filter)
+		resp = search.execute()
+		if resp.hits.total.value != len(chapter_nos):
+			print(f"the wrong number of chapters are in ES for {search.to_dict()}")
+		chapter_texts = {
+			hit.chapter.number: hit.chapter.text
+			for hit in resp.hits
+		}
+		return chapter_texts
 
 class DocStoryDescription(es_dsl_types.InnerDoc):
 	short = es_dsl_types.Text(meta={"source": "short_description"})
@@ -226,7 +246,7 @@ class Story(es_dsl_types.Document):
 		settings = {
 			"number_of_replicas": 0,
 			#"refresh_interval": "60s",
-			"query.default_field": "title",
+			"query": {"default_field": "title"},
 		}
 
 	def analyze(self, source: Chapter, story_meta: dict, archive_date: datetime):
@@ -264,6 +284,98 @@ class Story(es_dsl_types.Document):
 				"gte": min(gaps)
 			}
 
+	@classmethod
+	def is_deleted(cls, story_id: int) -> bool:
+		story_search = cls.search()
+		story_search = story_search.filter(Q("term", id=story_id))
+		story_search = story_search.extra(source=["deleted"], size=1)
+		story_results = story_search.execute()
+		try:
+			return story_results.hits[0].deleted
+		except IndexError:
+			raise ValueError(f"Story ID {story_id} not found for deletion check!")
+		except AttributeError:
+			raise ValueError(f"Story ID {story_id} does not have deletion flag?")
 
 
+class DocChunkStory(es_dsl_types.InnerDoc):
+	id = es_dsl_types.Integer(meta={"source": "id"})
 
+
+class DocChunkChapter(es_dsl_types.InnerDoc):
+	number = es_dsl_types.Short(meta={"source": "chapters.chapter_number or epub"}, multi=True)
+	id = es_dsl_types.Integer(meta={"source": "chapters.id"}, multi=True)
+	start = es_dsl_types.Integer(meta={"source": "epub"}, multi=True)
+	end = es_dsl_types.Integer(meta={"source": "epub"}, multi=True)
+
+
+class Chunk(es_dsl_types.Document):
+	story = es_dsl_types.Object(DocChunkStory)
+	chapter = es_dsl_types.Object(DocChunkChapter)
+	embeddings = es_dsl_types.DenseVector(dims=1024, index_options={"type": "flat"})
+	order = es_dsl_types.Integer()
+
+	class Index:
+		name = "chunks-*"
+		settings = {
+			"number_of_replicas": 0,
+		}
+
+	@staticmethod
+	def reconstruct_chunks(chunks: Iterable["Chunk"], context: bool = False) -> Iterable["Chunk"]:
+		story_id = chunks[0].story.id
+		chapter2get = set()
+		for chunk in chunks:
+			chapter2get.update(chunk.chapter.number)
+		chapter_texts = Chapter.get_multi_texts(story_id, chapter2get)
+
+		for chunk in chunks:
+			segment = ""
+			for i, chapter in enumerate(chunk.chapter.number):
+				slice_start = chunk.chapter.start[i]
+				slice_end = chunk.chapter.end[i]
+				segment += chapter_texts[chapter][slice_start:slice_end]
+				if not hasattr(chunk, "pcent"):
+					chunk.pcent = f"{slice_start / len(chapter_texts[chapter]):.0%}"
+			if Story.is_deleted(story_id):
+				chunk.link = f"https://fimfetch.net/story/{story_id}/a/{chunk.chapter.number[0]}"
+			else:
+				chunk.link = f"https://www.fimfiction.net/story/{story_id}/{chunk.chapter.number[0]}/a/"
+			chunk.text = segment
+		return chunks
+
+	@classmethod
+	def is_embedded(cls, story_id: int) -> bool:
+		story_search = cls.search()
+		story_search = story_search.filter(Q("term", story__id=story_id))
+		story_search = story_search.extra(size=1)
+		story_results = story_search.execute()
+		return story_results.hits.total.value > 0
+
+	def as_blob(self, human: bool = False) -> str:
+		included = hasattr(self, "to_chat")
+		if human:
+			blob = f"Chunk {self.order} {(2 * self.meta.score) - 1} {"" if included else "over context"} @{self.pcent} into {self.link}\n"
+		else:
+			blob = f"Chunk {self.order}\n"
+		blob += f"{self.text}\n"
+		return blob
+
+	@classmethod
+	def find_related(cls, story_id: int, vector: list[int]) -> Iterable["Chunk"]:
+		search = cls.search()
+		story_filter = Q("term", story__id=story_id)
+		chunk_count_q = search.filter(story_filter)
+		chunk_count = chunk_count_q.execute().hits.total.value
+		search = search.knn(field="embeddings",
+							query_vector=vector,
+							k=min(chunk_count, 100),
+							num_candidates=chunk_count,
+							similarity=0.5, #probably should not be raised
+							filter=story_filter)
+		search = search.extra(size=chunk_count)
+		resp = search.execute()
+		if resp.hits.total.value == 0:
+			raise ValueError("No related chunks found!")
+		chunks = Chunk.reconstruct_chunks(resp.hits)
+		return chunks
