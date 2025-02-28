@@ -7,6 +7,7 @@ from collections import namedtuple
 from pony import orm
 from tqdm import tqdm
 from pickle import loads, dumps, HIGHEST_PROTOCOL
+from sqlite3 import connect
 
 db = orm.Database()
 GroupInfo = namedtuple("GroupInfo", ["story_id", "group_names", "group_ids", "folder_ids", "paths"])
@@ -91,6 +92,8 @@ class GroupMeta:
 		for dirpath, _, files in groups_dir.walk():
 			for file in files:
 				match file:
+					case ".scraped":
+						pass
 					case "group-names":
 						cls.read_groups(dirpath / file)
 					case ".folders":
@@ -123,6 +126,8 @@ class GroupMeta:
 		self.scan_directory(groups_dir)
 		# it can also be fixed by setting volatile=true on Folder.last_checked
 		self.update_last_checked()
+		# has to be run outside a transaction, but PonyORM does not allow anything except select
+		KV._database_.provider.pool.con.execute("vacuum")
 
 	@staticmethod
 	def read_groups(group_list: PosixPath):
@@ -252,11 +257,9 @@ if __name__ == "__main__":
 	args = configuration.parse_args()
 	group_db = GroupMeta(args.db_path)
 	if not group_db.ready:
-		assert args.folder_path, "You must specify the folder path to load the database!"
-		group_db.scan_all(PosixPath(args.folder_path))
-		db.execute("vacuum")
-	from pprint import pprint
-	pprint(group_db.groups4story(7335).paths)
+		folder_path = PosixPath(args.folder_path)
+		assert folder_path.exists(), "You must specify a real folder path to populate the database!"
+		group_db.scan_all(folder_path)
 	from time import process_time
 	start = process_time()
 	for story_meta in group_db.all_story_groups():
