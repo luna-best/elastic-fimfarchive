@@ -5,7 +5,7 @@ optionally be answered by an LLM based on the question and chunks (RAG, defined 
 
 ## Dependencies
 
-Be warned, the implementation of semantic search is quite janky, as none of the tools used for this actually worked
+Be warned, the implementation of semantic search is quite janky, as few of the tools used for this actually worked
 without poking, prodding and patching.
 
 ### Elasticsearch
@@ -33,8 +33,8 @@ in its input.
 
 1. Make a Python virtual environment
 2. `pip install stapi xformers`
-3. add tokenization endpoints to stapi: `patch -p1 < stapi.patch`
-4. run stapi: `MODEL=dunzhang/stella_en_400M_v5 uvicorn --host ${HOST} --port ${PORT} main:app`
+3. add tokenization endpoints to STAPI: `patch -p1 < stapi.patch`
+4. run STAPI: `MODEL=dunzhang/stella_en_400M_v5 uvicorn --host ${HOST} --port ${PORT} main:app`
 5. put the HOST and PORT in `vaguesearch.toml` under `llms.embedding.stapi host` as a URL
 
 <details>
@@ -52,44 +52,34 @@ Environment="MODEL=dunzhang/stella_en_400M_v5"
 ```
 </details>
 
-### Ollama
-Theoretically, STAPI could be patched to function as a chat server, but it is a lot more work.  Ollama is much easier
-to work with as a chat server, but it is still critical to count tokens in a low VRAM environment, and that feature is 
-[not provided](https://github.com/ollama/ollama/issues/3582).  Even so, a 
-[patch exists](https://github.com/ollama/ollama/pull/7412) to provide that feature.  So, Ollama will be patched and
-built from source:
-1. `git clone https://github.com/ollama/ollama.git`
-   * Note: if you have old `go` (check `go.mod`), run: `git clone --branch v0.5.1 https://github.com/ollama/ollama.git`
-2. `cd ollama`
-   * Note: if you used `--branch` above, add a step: `git switch --create v0.5.1`
-3. `git fetch origin pull/7412/head:tokenizer-endpoints`
-4. `git merge tokenizer-endpoints -m "git is miserable"`
-5. [Build Ollama](https://github.com/ollama/ollama/blob/main/docs/development.md#linux)
-   1. Install build prerequisites
-   2. It's unnecessary to build for both CUDA 11 and 12, you can build for the version you have
-   3. Additionally, you can select your own [graphics card architecture](https://developer.nvidia.com/cuda-gpus#collapse2).
-   4. `make cuda_v11 CUDA_ARCHITECTURES=61`
-   5. `go build .`
-6. Run Ollama
-   1. `OLLAMA_HOST=${HOST} ./ollama serve`
-   2. Note: Ollama serves on port 11434 by default
-7. Put the Ollama URL in `vaguesearch.toml` under `llms.chat.ollama host`
-8. Put a [model](https://ollama.com/library) in `vaguesearch.toml` under `llms.chat.ollama model`
-   1. Such as  `falcon3:1b-instruct-fp16` or `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF:F16`
+### Llama.cpp
+Theoretically, STAPI could be patched to function as a chat server, but it is a lot more work.  Llama.cpp is much 
+easier to start up and interact with than alternatives (such as patching Ollama to provide a tokenize endpoint).
+
+The basic [installation instructions](https://github.com/ggml-org/llama.cpp?tab=readme-ov-file#quick-start) may be 
+followed, and the model I chose is [Falcon-H1-3B](https://huggingface.co/tiiuae/Falcon-H1-3B-Instruct-GGUF)
+
+The URL to the chat server is placed in `vaguesearch.toml` under `llms.chat.host`
+Next, place the maximum amount of context that the RAG will use. This is the system prompt, query, and chunk content,
+after which additional chunks will not be sent to Llama.cpp. If the model has only a little context, be sure to leave 
+some room for the model's answer.
 
 <details>
-<summary>Ollama systemd unit</summary>
+<summary>Example user unit for Llama.cpp:</summary>
 
 ```text
 [Unit]
-Description=ollama
+Description=LLama.cpp server
 
 [Service]
 Type=simple
-ExecStart=/.../ollama serve
-Environment="OLLAMA_HOST=..."
-
+ExecStart=/.../llama.cpp/build/bin/llama-server
+WorkingDirectory=/.../llama.cpp
+Environment="LLAMA_ARG_HF_REPO=tiiuae/Falcon-H1-3B-Instruct-GGUF"
+Environment="LLAMA_ARG_HOST=..."
+Environment="LLAMA_ARG_PORT=..."
 ```
+
 </details>
 
 ## Running the search

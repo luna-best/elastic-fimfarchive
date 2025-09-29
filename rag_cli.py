@@ -1,26 +1,27 @@
+from time import time
+start = time()
 import logging
 from itertools import batched
 from pathlib import PosixPath
 from textwrap import dedent
 from collections import namedtuple
 from tomllib import load
-from time import time
 
-from chonkie import SDPMChunker
+from chonkie import SemanticChunker
 from configargparse import ArgParser, Namespace, FileType
-from elasticsearch_dsl import connections, Q
+from elasticsearch.dsl import connections, Q
 
-from adapters import PatchedClient, STAPIEmbeddings
+from adapters import STAPIEmbeddings, LlamacppAPI
 from esdocs import Chapter, Chunk, Story
 
 from typing import Type
-from elasticsearch_dsl import Document
+from elasticsearch.dsl import Document
 from elasticsearch import NotFoundError
 
 ChapterOffset = namedtuple("ChapterOffset", ["id", "number", "start", "end"])
-start = time()
 
-def load_config():
+
+def load_config() -> Namespace:
 	config_path = PosixPath(__file__).parent / "index-fics.ini"
 	enrich_config = ArgParser(default_config_files=[str(config_path)], ignore_unknown_config_file_keys=True)
 	enrich_config.add_argument('-c', '--config', is_config_file=True, help='config file path')
@@ -83,6 +84,7 @@ def store_composable_template(doc_class: Type[Document]):
 	except (NotFoundError, KeyError, IndexError):
 		print(f"Saving index template for {index_wild} with {nodes} shards")
 		conn.indices.put_index_template(name=template_name, template=legacy_index_template, index_patterns=[index_wild])
+		return
 	update = False
 	if legacy_index_template["mappings"] != found_tmpl["mappings"]:
 		update = True
@@ -157,14 +159,14 @@ def embed_story(embedder: STAPIEmbeddings, story_id: int):
 	start = time()
 	if Chunk.is_embedded(story_id):
 		return
-	chunker = SDPMChunker(embedding_model=embedder, chunk_size=512, skip_window=2)
+	chunker = SemanticChunker(embedding_model=embedder, chunk_size=512, skip_window=2)
 	story, offsets = load_story(story_id)
 	step = time()
-	print(f"{step - start}s loading story")
+	print(f"{step - start:.2f}s loading story")
 	start = step
 	chunked = chunker.chunk(story)
 	step = time()
-	print(f"{step - start}s chunking")
+	print(f"{step - start:.2f}s chunking")
 	start = step
 	for i, chunk in enumerate(chunked):
 		es_chunk = Chunk(order=i)
@@ -191,7 +193,7 @@ def embed_story(embedder: STAPIEmbeddings, story_id: int):
 			chunk.doc.embeddings = embedding
 			chunk.doc.save(index=f"<{chunk.doc._index._name[:-1]}" + "{now/d}>")
 	step = time()
-	print(f"{start - step}s embedding")
+	print(f"{step - start:.2f}s embedding")
 
 
 def count_tokens(client: PatchedClient, model: str, prompt: str) -> int:
@@ -201,13 +203,14 @@ def count_tokens(client: PatchedClient, model: str, prompt: str) -> int:
 
 if __name__ == "__main__":
 	step = time()
-	print(f"{step - start}s loading")
+	print(f"{step - start:.2f}s loading")
 	my_config = load_config()
 	setup_elasticsearch(my_config)
 
 	embedder = STAPIEmbeddings(my_config.vaguesearch["llms"]["embedding"]["stapi host"])
 
-	ollama_client = PatchedClient(my_config.vaguesearch["llms"]["chat"]["ollama host"])
+	ollama_client = PatchedClient(my_config.vaguesearch["llms"]["chat"]["host"])
+	llama_cpp_client = LlamacppAPI(my_config.vaguesearch["llms"]["chat"]["host"])
 	embed_story(embedder, my_config.vaguesearch["story"]["one"]["id"])
 
 	prompt = """
@@ -216,7 +219,7 @@ if __name__ == "__main__":
 	"""
 	prompt = dedent(prompt).strip()
 	prompt = prompt.format(query=dedent(my_config.vaguesearch["story"]["one"]["relevance question"]).strip())
-	step = time()
+	start = time()
 	prompt_embed = embedder.final_embed([prompt])[0]
 	Chunk._index.refresh()
 
@@ -226,14 +229,15 @@ if __name__ == "__main__":
 		print("No semantically related chunks found.")
 		exit(1)
 	step = time()
-	print(f"{step - start}s retrieving")
+	print(f"{step - start:.2f}s retrieving")
 	start = step
 
 	system_prompt = dedent("""
 	You are a helpful assistant that provides accurate and reliable information about fiction stories.
-	You will be provided with chunks of a story that is relevant to a question. 
+	You will be provided with chunks of a story that is relevant to a question.
 	Answer a question about the story using information from the chunks below.
-	Use information from multiple chunks to answer the question.  Ignore chunks that have no information about the question.
+	Use information from multiple chunks to answer the question.
+	Ignore chunks that have no information about the question.
 	You do not hallucinate information and always cite the chunks you use.
 	{chunks}
 	""").strip()
@@ -242,25 +246,23 @@ if __name__ == "__main__":
 		user_question = dedent(my_config.vaguesearch["story"]["one"]["relevance question"]).strip()
 
 	rag_chunks = ""
-	chat_tokens = count_tokens(ollama_client, my_config.vaguesearch["llms"]["chat"]["ollama model"], system_prompt.format(chunks=""))
-	chat_tokens += count_tokens(ollama_client, my_config.vaguesearch["llms"]["chat"]["ollama model"], user_question)
-	chat_tokens += 10 # it is supposed to represent the control tokens surrounding the system and user prompts
+	chat_tokens = llama_cpp_client.count_tokens(system_prompt.format(chunks="")) + llama_cpp_client.count_tokens(user_question) + 10
 	for chunk in chunks:
-		chat_tokens += count_tokens(ollama_client, my_config.vaguesearch["llms"]["chat"]["ollama model"], chunk.as_blob())
+		chat_tokens += llama_cpp_client.count_tokens(chunk.as_blob())
 		if chat_tokens > my_config.vaguesearch["llms"]["chat"]["context"]:
 			break
 		chunk.to_chat = True
 		rag_chunks += chunk.as_blob()
 
 	system_prompt = system_prompt.format(chunks=rag_chunks)
-	ollama_resp2 = ollama_client.generate(model=my_config.vaguesearch["llms"]["chat"]["ollama model"], system=system_prompt, prompt=user_question, )
+	chat_response = llama_cpp_client.chat_response(system_prompt + user_question)
 
 	with open("ragout.txt", "w") as fp:
 		fp.write(user_question)
 		fp.write("\n==================================================\n")
-		fp.write(ollama_resp2.response)
+		fp.write(chat_response)
 		fp.write("\n==================================================\n")
 		for chunk in chunks:
 			fp.write(chunk.as_blob(True))
 	step = time()
-	print(f"{step - start}s answering")
+	print(f"{step - start:.2f}s answering")

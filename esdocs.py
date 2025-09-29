@@ -3,8 +3,8 @@ from datetime import datetime, UTC
 from itertools import pairwise
 from bs4 import BeautifulSoup
 
-import elasticsearch_dsl as es_dsl_types
-from elasticsearch_dsl import Q
+from elasticsearch import dsl as es_dsl_types
+from elasticsearch.dsl import Q
 from ebooklib.epub import EpubHtml
 from statsmodels.stats.proportion import proportion_confint
 from typing import Union, Iterable, SupportsIndex

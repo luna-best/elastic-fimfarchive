@@ -1,7 +1,8 @@
 ConfigArgParse
 EbookLib
-elasticsearch-dsl
+elasticsearch
 tqdm
 lxml
 beautifulsoup4
 statsmodels
+pony
