@@ -1,0 +1,708 @@
+{
+  "data_view": {
+    "id": "c4f5036b-a017-4efb-9a7a-5502358ed129",
+    "version": "WzM3ODgsNDNd",
+    "title": "stories-*",
+    "timeFieldName": "published",
+    "sourceFilters": [],
+    "fieldFormats": {
+      "completion_status": {
+        "id": "color",
+        "params": {
+          "fieldType": "string",
+          "colors": [
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "incomplete",
+              "text": "#D6BF57",
+              "background": "#000000"
+            },
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "complete",
+              "text": "#54B399",
+              "background": "#030303"
+            },
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "cancelled",
+              "text": "#D36086",
+              "background": "#000000"
+            },
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "hiatus",
+              "text": "#E7664C",
+              "background": "#000000"
+            }
+          ]
+        }
+      },
+      "content_rating": {
+        "id": "color",
+        "params": {
+          "fieldType": "string",
+          "colors": [
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "mature",
+              "text": "#D36086",
+              "background": "#000000"
+            },
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "teen",
+              "text": "#D6BF57",
+              "background": "#030303"
+            },
+            {
+              "range": "-Infinity:Infinity",
+              "regex": "everyone",
+              "text": "#54B399",
+              "background": "#060606"
+            }
+          ]
+        }
+      },
+      "published": {
+        "id": "date",
+        "params": {}
+      },
+      "id": {
+        "id": "url",
+        "params": {
+          "type": "a",
+          "urlTemplate": "https://www.fimfiction.net/story/{{value}}",
+          "labelTemplate": "{{value}}",
+          "width": null,
+          "height": null
+        }
+      },
+      "views": {
+        "id": "number",
+        "params": {
+          "pattern": "0.00a"
+        }
+      },
+      "words": {
+        "id": "number",
+        "params": {
+          "pattern": "0.0a"
+        }
+      },
+      "groups.ids": {
+        "id": "number",
+        "params": {
+          "parsedUrl": {
+            "origin": "https://meow:5601",
+            "pathname": "/s/fimfics/app/home",
+            "basePath": "/s/fimfics"
+          },
+          "pattern": "0"
+        }
+      },
+      "folders.ids": {
+        "id": "number",
+        "params": {
+          "parsedUrl": {
+            "origin": "https://meow:5601",
+            "pathname": "/s/fimfics/app/home",
+            "basePath": "/s/fimfics"
+          },
+          "pattern": "0"
+        }
+      }
+    },
+    "runtimeFieldMap": {},
+    "fieldAttrs": {
+      "author.name": {
+        "customLabel": "Author"
+      },
+      "completion_status": {
+        "customLabel": "Complete?"
+      },
+      "content_rating": {
+        "customLabel": "Content rating"
+      },
+      "folders.ids": {
+        "customLabel": "Folder IDs"
+      },
+      "folders.names": {
+        "customLabel": "Folder paths"
+      },
+      "groups.ids": {
+        "customLabel": "Group IDs"
+      },
+      "groups.names": {
+        "customLabel": "Groups"
+      },
+      "id": {
+        "customLabel": "Story Link",
+        "count": 1
+      },
+      "published": {
+        "customLabel": "Story Published",
+        "count": 1
+      },
+      "score.dislikes": {
+        "customLabel": "👎"
+      },
+      "score.likes": {
+        "customLabel": "👍"
+      },
+      "tags": {
+        "customLabel": "Tags"
+      },
+      "title": {
+        "customLabel": "Story Title",
+        "count": 1
+      },
+      "views": {
+        "customLabel": "Views"
+      },
+      "words": {
+        "customLabel": "Story wordcount",
+        "count": 1
+      },
+      "_score": {
+        "count": 1
+      }
+    },
+    "allowNoIndex": false,
+    "name": "Stories",
+    "allowHidden": false,
+    "fields": {
+      "_id": {
+        "count": 0,
+        "name": "_id",
+        "type": "string",
+        "esTypes": [
+          "_id"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "_ignored": {
+        "count": 0,
+        "name": "_ignored",
+        "type": "string",
+        "esTypes": [
+          "_ignored"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "_index": {
+        "count": 0,
+        "name": "_index",
+        "type": "string",
+        "esTypes": [
+          "_index"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "_score": {
+        "count": 1,
+        "name": "_score",
+        "type": "number",
+        "scripted": false,
+        "searchable": false,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "number"
+        },
+        "shortDotsEnable": false
+      },
+      "_source": {
+        "count": 0,
+        "name": "_source",
+        "type": "_source",
+        "esTypes": [
+          "_source"
+        ],
+        "scripted": false,
+        "searchable": false,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "_source"
+        },
+        "shortDotsEnable": false
+      },
+      "author.id": {
+        "count": 0,
+        "name": "author.id",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "shortDotsEnable": false
+      },
+      "author.name": {
+        "count": 0,
+        "name": "author.name",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "customLabel": "Author",
+        "shortDotsEnable": false
+      },
+      "completion_status": {
+        "count": 0,
+        "name": "completion_status",
+        "type": "string",
+        "esTypes": [
+          "keyword"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "color",
+          "params": {
+            "fieldType": "string",
+            "colors": [
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "incomplete",
+                "text": "#D6BF57",
+                "background": "#000000"
+              },
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "complete",
+                "text": "#54B399",
+                "background": "#030303"
+              },
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "cancelled",
+                "text": "#D36086",
+                "background": "#000000"
+              },
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "hiatus",
+                "text": "#E7664C",
+                "background": "#000000"
+              }
+            ]
+          }
+        },
+        "customLabel": "Complete?",
+        "shortDotsEnable": false
+      },
+      "content_rating": {
+        "count": 0,
+        "name": "content_rating",
+        "type": "string",
+        "esTypes": [
+          "keyword"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "color",
+          "params": {
+            "fieldType": "string",
+            "colors": [
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "mature",
+                "text": "#D36086",
+                "background": "#000000"
+              },
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "teen",
+                "text": "#D6BF57",
+                "background": "#030303"
+              },
+              {
+                "range": "-Infinity:Infinity",
+                "regex": "everyone",
+                "text": "#54B399",
+                "background": "#060606"
+              }
+            ]
+          }
+        },
+        "customLabel": "Content rating",
+        "shortDotsEnable": false
+      },
+      "deleted": {
+        "count": 0,
+        "name": "deleted",
+        "type": "boolean",
+        "esTypes": [
+          "boolean"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "boolean"
+        },
+        "shortDotsEnable": false
+      },
+      "description.long": {
+        "count": 0,
+        "name": "description.long",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "description.short": {
+        "count": 0,
+        "name": "description.short",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "folders.ids": {
+        "count": 0,
+        "name": "folders.ids",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number",
+          "params": {
+            "pattern": "0"
+          }
+        },
+        "customLabel": "Folder IDs",
+        "shortDotsEnable": false
+      },
+      "folders.names": {
+        "count": 0,
+        "name": "folders.names",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "customLabel": "Folder paths",
+        "shortDotsEnable": false
+      },
+      "groups.ids": {
+        "count": 0,
+        "name": "groups.ids",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number",
+          "params": {
+            "pattern": "0"
+          }
+        },
+        "customLabel": "Group IDs",
+        "shortDotsEnable": false
+      },
+      "groups.names": {
+        "count": 0,
+        "name": "groups.names",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "customLabel": "Groups",
+        "shortDotsEnable": false
+      },
+      "id": {
+        "count": 1,
+        "name": "id",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "url",
+          "params": {
+            "urlTemplate": "https://www.fimfiction.net/story/{{value}}",
+            "labelTemplate": "{{value}}"
+          }
+        },
+        "customLabel": "Story Link",
+        "shortDotsEnable": false
+      },
+      "publish_gaps": {
+        "count": 0,
+        "name": "publish_gaps",
+        "type": "number_range",
+        "esTypes": [
+          "integer_range"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "string"
+        },
+        "shortDotsEnable": false
+      },
+      "published": {
+        "count": 1,
+        "name": "published",
+        "type": "date",
+        "esTypes": [
+          "date"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "date"
+        },
+        "customLabel": "Story Published",
+        "shortDotsEnable": false
+      },
+      "score.dislikes": {
+        "count": 0,
+        "name": "score.dislikes",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "customLabel": "👎",
+        "shortDotsEnable": false
+      },
+      "score.likes": {
+        "count": 0,
+        "name": "score.likes",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "customLabel": "👍",
+        "shortDotsEnable": false
+      },
+      "score.ratio": {
+        "count": 0,
+        "name": "score.ratio",
+        "type": "number",
+        "esTypes": [
+          "float"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "shortDotsEnable": false
+      },
+      "score.wilson97": {
+        "count": 0,
+        "name": "score.wilson97",
+        "type": "number",
+        "esTypes": [
+          "float"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "shortDotsEnable": false
+      },
+      "score.wilson99": {
+        "count": 0,
+        "name": "score.wilson99",
+        "type": "number",
+        "esTypes": [
+          "float"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number"
+        },
+        "shortDotsEnable": false
+      },
+      "tags": {
+        "count": 0,
+        "name": "tags",
+        "type": "string",
+        "esTypes": [
+          "keyword"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "string"
+        },
+        "customLabel": "Tags",
+        "shortDotsEnable": false
+      },
+      "title": {
+        "count": 1,
+        "name": "title",
+        "type": "string",
+        "esTypes": [
+          "text"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": false,
+        "readFromDocValues": false,
+        "format": {
+          "id": "string"
+        },
+        "customLabel": "Story Title",
+        "shortDotsEnable": false
+      },
+      "views": {
+        "count": 0,
+        "name": "views",
+        "type": "number",
+        "esTypes": [
+          "long"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number",
+          "params": {
+            "pattern": "0.00a"
+          }
+        },
+        "customLabel": "Views",
+        "shortDotsEnable": false
+      },
+      "words": {
+        "count": 1,
+        "name": "words",
+        "type": "number",
+        "esTypes": [
+          "integer"
+        ],
+        "scripted": false,
+        "searchable": true,
+        "aggregatable": true,
+        "readFromDocValues": true,
+        "format": {
+          "id": "number",
+          "params": {
+            "pattern": "0.0a"
+          }
+        },
+        "customLabel": "Story wordcount",
+        "shortDotsEnable": false
+      }
+    },
+    "namespaces": [
+      "fimfics"
+    ]
+  }
+}
