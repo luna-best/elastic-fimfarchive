@@ -15,9 +15,10 @@ from dataclasses import dataclass
 
 from tqdm import tqdm
 from configargparse import ArgParser, FileType
-from elasticsearch_dsl import connections, Document
+from elasticsearch.dsl import connections, Document
 from elasticsearch.helpers import streaming_bulk, BulkIndexError
 from elasticsearch.exceptions import ConnectionTimeout
+from requests import Session
 
 from ebooklib.epub import EpubException, EpubReader
 from ebooklib import ITEM_DOCUMENT
@@ -39,7 +40,7 @@ class StoryFeed:
 	def count_stories(self) -> int:
 		print("Counting stories. Configure story-count to accelerate: ", end="")
 		count = -2
-		for line in self.index_unparsed.readlines():
+		for _ in self.index_unparsed.readlines():
 			count += 1
 		self.index_unparsed.close()
 		self.index_unparsed = TextIOWrapper(self.zip_source.open("index.json"), encoding="utf-8", newline="\n")
@@ -346,15 +347,121 @@ def load_config() -> Namespace:
 	ingest_config.add_argument("--start-at", type=int, default=0)
 	ingest_config.add_argument("--skip-tags", action="append", default=["Anon", "Anthro", "Advisory"])
 	ingest_config.add_argument("--folders-db")
+	ingest_config.add_argument("--bootstrap", default=None)
 	return ingest_config.parse_args()
+
+def bootstrap_elasticsearh(config):
+	client = connections.create_connection(hosts=config.es_hosts,
+								  ca_certs=config.es_ca_cert_path,
+								  basic_auth=("elastic", config.bootstrap))
+	writer_cluster_privileges = ["monitor", "manage_index_templates"]
+	writer_index_privileges = ["monitor", "auto_configure", "write", "create_index", "view_index_metadata", "read"]
+	writer_index_patterns = ["chapters-*", "stories-*", "chunks-*"]
+	writer_index_privileges = [
+		{
+			"names": pattern,
+			"privileges": writer_index_privileges
+		}
+		for pattern in writer_index_patterns
+	]
+	# add maintenance privilege to allow index refresh by semantic search script on chunks indices
+	writer_index_privileges[writer_index_patterns.index("chunks-*")]["privileges"].append("maintenance")
+	client.security.put_role(name="elasticfics-writer",
+							 cluster=writer_cluster_privileges,
+							 indices=writer_index_privileges)
+	client.security.put_user(username=config.username,
+							 password=config.password,
+							 roles=["elasticfics-writer"])
+	reader_index_privileges = ["read", "view_index_metadata"]
+	reader_index_patterns = ["chapters-*", "stories-*"]
+	reader_index_privileges = [
+		{
+			"names": pattern,
+			"privileges": reader_index_privileges
+		}
+		for pattern in reader_index_patterns
+	]
+	# clean up Kibana UI
+	reader_kibana_privileges = {
+        "application": "kibana-.kibana",
+        "privileges": [
+			"feature_discover.all",
+			"feature_dashboard.all",
+			"feature_canvas.all",
+			"feature_visualize.all",
+			"feature_dev_tools.read"
+        ],
+        "resources": [
+			"space:fimfics"
+        ]
+      }
+	client.security.put_role(name="elasticfics-reader",
+							 indices=reader_index_privileges,
+							 applications=[reader_kibana_privileges])
+	client.security.put_user(username="elasticfics-reader",
+							 password=config.password,
+							 roles=["elasticfics-reader"])
+	# the first elasticsearch host, with port replaced by the default Kibana port
+	kibana_url = config.es_hosts[0].replace("9200", "5601")
+	kibana_session = Session()
+	kibana_session.auth = ("elastic", config.bootstrap)
+	kibana_session.verify = config.es_ca_cert_path
+	# the header must be set to reach the Kibana API (it may be any value)
+	kibana_session.headers["kbn-xsrf"] = "true"
+
+	# clean up Kibana UI
+	fimfic_space_settings = {
+		"id": "fimfics",
+		"name": "FIMFics",
+		"description": "Analysis of FIMFic chapters",
+		"color": "#54B399",
+		"disabledFeatures": [
+			"enterpriseSearch",
+			"securitySolutionTimeline",
+			"securitySolutionNotes",
+			"siemV2",
+			"securitySolutionCasesV3",
+			"maps",
+			"ml",
+			"osquery",
+			"actions",
+			"generalCasesV3",
+			"stackAlerts",
+			"fleetv2",
+			"logs",
+			"infrastructure",
+			"apm",
+			"uptime",
+			"observabilityCasesV3",
+			"slo",
+			"filesSharedImage",
+			"guidedOnboardingFeature",
+			"rulesSettings",
+			"maintenanceWindow",
+			"monitoring",
+			"canvas",
+			"fleet"
+		]
+	}
+	kibana_session.post(f"{kibana_url}/api/spaces/space", data=fimfic_space_settings)
+	data_view_url = f"{kibana_url}/api/data_views/data_view"
+	data_view_files = [
+		Path(__file__).parent / "stories_data_view.json",
+		Path(__file__).parent / "chapters_data_view.json"
+	]
+	for data_view in data_view_files:
+		kibana_session.post(data_view_url , headers={"Content-Type": "application/json"}, data=data_view.read_bytes())
 
 
 if __name__ == "__main__":
 	config_options = load_config()
+	if config_options.bootstrap:
+		bootstrap_elasticsearh(config_options)
+		exit(0)
 	setup_elasticsearch(config_options)
 	# minimum: 0.1 seconds worth of chapters
 	# maximum: the time it takes for Elasticsearch to accept one bulk request
-	doc_belt = Queue(5)
+	doc_belt = Queue(50)
 	finished_processing_fics = Event()
 	doc_eater = Thread(target=bulk_index, args=(doc_belt, finished_processing_fics), name="doc eater")
 	doc_maker = Thread(target=process_fics, args=(config_options, doc_belt, finished_processing_fics), name="doc maker")

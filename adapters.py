@@ -1,48 +1,18 @@
 from dataclasses import dataclass
-from typing import Sequence, Optional, Union, Mapping, Any
+from typing import  Union, Any, Callable
 
 from chonkie import BaseEmbeddings
 from numpy import ndarray, array, matmul, linalg
 
-from ollama import Options, Client
-from ollama._types import BaseGenerateResponse, BaseRequest
 from requests import Session
 
-
-class TokenizeResponse(BaseGenerateResponse):
-	tokens: Sequence[int]
-
-
-class TokenizeRequest(BaseRequest):
-	prompt: str
-	keepalive: Optional[Union[float, str]] = None
-	options: Optional[Union[Mapping[str, Any], Options]] = None
-
-
-class DeTokenizeResponse(BaseGenerateResponse):
-	text: str
-
-
-class DeTokenizeRequest(BaseRequest):
-	tokens: Sequence[int]
-	keepalive: Optional[Union[float, str]] = None
-	options: Optional[Union[Mapping[str, Any], Options]] = None
-
-
-class PatchedClient(Client):
-	def tokenize(self, model: str = '', prompt: str = "", options=None, keepalive=None) -> TokenizeResponse:
-		req = TokenizeRequest(model=model, prompt=prompt, keepalive=keepalive, options=options)
-		resp = self._request(TokenizeResponse, "POST", "/api/tokenize", json=req.model_dump(exclude_none=True))
-		return resp
-
-	def detokenize(self, model: str = "", tokens: Sequence[int] = None, options=None, keepalive=None)-> DeTokenizeResponse:
-		req = DeTokenizeRequest(model=model, tokens=tokens, keepalive=keepalive, options=options)
-		resp = self._request(DeTokenizeResponse, "POST", "/api/detokenize", json=req.model_dump(exclude_none=True))
-		return resp
 
 
 @dataclass
 class STAPIEmbeddings(BaseEmbeddings):
+	def get_tokenizer_or_token_counter(self) -> Union[Any, Callable[[str], int]]:
+		return self.count_tokens
+
 	host: str
 
 	def __post_init__(self):
@@ -101,10 +71,32 @@ class STAPIEmbeddings(BaseEmbeddings):
 	def dimension(self) -> int:
 		return 1024
 
-	def final_embed(self, texts: list[str]) -> list[float]:
+	def final_embed(self, texts: list[str]) -> list[list[int]]:
 		resp = self._embed(texts)
 		embeddings = [
 			embedding["embedding"]
 			for embedding in resp["data"]
 		]
 		return embeddings
+
+@dataclass
+class LlamacppAPI:
+	base_url: str
+
+	def __post_init__(self):
+		self.base_url = self.base_url.rstrip("/")
+		self.session = Session()
+
+	def tokenize(self, content: str) -> list[int]:
+		resp = self.session.post(f"{self.base_url}/tokenize", json={"content": content})
+		return resp.json()["tokens"]
+
+	def count_tokens(self, content: str) -> int:
+		return len(self.tokenize(content))
+
+	def completion(self, prompt: Union[str, list[str], list[int], dict[str, Any]]) -> dict[str, str]:
+		resp = self.session.post(f"{self.base_url}/completion", json={"prompt": prompt})
+		return resp.json()
+
+	def chat_response(self, prompt: Union[str, list[str], list[int], dict[str, Any]]) -> str:
+		return self.completion(prompt)["content"]

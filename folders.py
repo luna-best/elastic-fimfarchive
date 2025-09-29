@@ -31,7 +31,7 @@ class KV(db.Entity):
 
 	@staticmethod
 	def contains(item) -> bool:
-		found = KV.select(lambda kv: kv.key == item).count()
+		found = KV.select(key=item).count()
 		return bool(found)
 
 
@@ -218,7 +218,8 @@ class GroupMeta:
 		if not self.ready:
 			raise ValueError("The database has not been populated yet!")
 		# found = Folder.select(lambda a: story in a.stories)
-		found = Placement.select(lambda m: m.story == story)
+		# found = Placement.select(lambda m: m.story == story)
+		found = Placement.select(story=story)
 		group_ids = set()
 		folder_ids = set()
 		group_names = set()

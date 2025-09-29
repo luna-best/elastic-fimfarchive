@@ -38,20 +38,22 @@ pip install -r requirements.txt
 ```
 
 ### Elasticsearch
-The script requires a user or API key that has the following permissions:
+Run the script with the bootstrap option (`python index-fics.py --bootstrap ELASTIC_PASSWORD`) to create the
+following resources in Elasticsearch:
+- A writer role `elasticfics-writer` with permissions on:
+  - `chapters-*`
+  - `stories-*`
+  - `chunks-*`
+- A writer user with the username and password in `index-fics.ini`
+- A reader role `elasticfics-reader` with permissions on:
+  - `chapters-*`
+  - `stories-*`
+- A reader user named `elasticfics-reader` and the password in `index-fics.ini`
+- A "FIMFics" space that has been decluttered
+- A Data View for Chapters (to make the browsing experience in Discover better)
+- A Data View for Stories (although not as refined as Chapters)
 
-* [Cluster privileges](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-privileges.html#privileges-list-cluster):
-	* monitor
-	* manage_index_templates
-
-* [Index privileges](https://www.elastic.co/guide/en/elasticsearch/reference/current/security-privileges.html#privileges-list-indices) on both `chapters-*` and `stories-*`:
-	* monitor
-	* auto_configure
-	* write
-	* create_index
-	* view_index_metadata
-
-Create a [space](https://www.elastic.co/guide/en/kibana/current/xpack-spaces.html) and [import](https://www.elastic.co/guide/en/kibana/current/managing-saved-objects.html) the [Data Views](data%20views.ndjson) for a better experience in Kibana. Useful advanced space settings:
+In addition to the above settings, you can improve your Kibana experience by setting the following advanced options:
 
 | Setting                   | Value                                                     |
 |---------------------------|-----------------------------------------------------------|
@@ -59,8 +61,11 @@ Create a [space](https://www.elastic.co/guide/en/kibana/current/xpack-spaces.htm
 | `timepicker:quickRanges`  | `[]`                                                      |
 | `defaultColumns`          | `story.author.name, story.title, story.id, chapter.title` |
 
-When searching for chapters by their content, it's helpful to add the meta field `_score` to the sorted fields and 
+Note: When searching for chapters by their content, it's helpful to add the meta field `_score` to the sorted fields and 
 remove the publish date.
+
+Note: The bootstrap option connects to the Kibana API, but it finds Kibana by substituting the port (9200 -> 5601)
+on the first ES node given.
 
 ### Configuration
 See [`index-fics.example.ini`](index-fics.example.ini) for an example configuration.  All configuration settings are accepted as 

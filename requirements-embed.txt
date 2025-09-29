@@ -1,2 +1,1 @@
-chonkie
-ollama
+chonkie[semantic]
