@@ -196,11 +196,6 @@ def embed_story(embedder: STAPIEmbeddings, story_id: int):
 	print(f"{step - start:.2f}s embedding")
 
 
-def count_tokens(client: PatchedClient, model: str, prompt: str) -> int:
-	tokens_resp = client.tokenize(model, prompt)
-	return len(tokens_resp.tokens)
-
-
 if __name__ == "__main__":
 	step = time()
 	print(f"{step - start:.2f}s loading")
@@ -209,7 +204,6 @@ if __name__ == "__main__":
 
 	embedder = STAPIEmbeddings(my_config.vaguesearch["llms"]["embedding"]["stapi host"])
 
-	ollama_client = PatchedClient(my_config.vaguesearch["llms"]["chat"]["host"])
 	llama_cpp_client = LlamacppAPI(my_config.vaguesearch["llms"]["chat"]["host"])
 	embed_story(embedder, my_config.vaguesearch["story"]["one"]["id"])
 

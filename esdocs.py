@@ -355,7 +355,10 @@ class Chunk(es_dsl_types.Document):
 	def as_blob(self, human: bool = False) -> str:
 		included = hasattr(self, "to_chat")
 		if human:
-			blob = f"Chunk {self.order} {(2 * self.meta.score) - 1} {"" if included else "over context"} @{self.pcent} into {self.link}\n"
+			# https://www.elastic.co/docs/reference/elasticsearch/mapping-reference/dense-vector
+			# inverse of cosine: (1 + cosine(query, vector)) / 2
+			relevance = (2 * self.meta.score) - 1
+			blob = f"Chunk {self.order} {relevance:0.7f}{"" if included else " over context"} @{self.pcent} into {self.link}\n"
 		else:
 			blob = f"Chunk {self.order}\n"
 		blob += f"{self.text}\n"
