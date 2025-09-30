@@ -22,7 +22,7 @@ accurate Wilson scores than what's in the `index.json`, whether a story is delet
 This script is particularly distinguished from others like https://github.com/a0346f102085fe9f/IAS2 in that individual
 chapters are extracted from the .epub and their actual content is associated with their metadata in the `index.json`.
 
-See [below](#groups-and-folders) for information about folders.
+See [below](#groups-and-folders) for information about folders.  See [this page](semantic%20search.md) for a RAG implementation that answers questions about stories.
 
 ## Detailed setup
 This guide isn't intended to cover fundamentals, but you can learn more about [setting up Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/getting-started.html) and 

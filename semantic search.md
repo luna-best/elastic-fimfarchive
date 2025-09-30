@@ -6,7 +6,8 @@ optionally be answered by an LLM based on the question and chunks (RAG, defined 
 ## Dependencies
 
 Be warned, the implementation of semantic search is quite janky, as few of the tools used for this actually worked
-without poking, prodding and patching.
+without poking, prodding and patching.  The easiest dependency is probably the python one: 
+`pip install chonkie[semantic]` (in the virtual environment for elastic-fimfarchive)
 
 ### Elasticsearch
 
