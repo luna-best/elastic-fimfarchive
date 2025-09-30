@@ -32,14 +32,26 @@ that are in a block of text to work.  Consequently, STAPI is patched to correctl
 in its input.
 
 1. Make a Python virtual environment
-2. `pip install stapi xformers`
-3. add tokenization endpoints to STAPI: `patch -p1 < stapi.patch`
-4. run STAPI: `MODEL=dunzhang/stella_en_400M_v5 uvicorn --host ${HOST} --port ${PORT} main:app`
-5. put the HOST and PORT in `vaguesearch.toml` under `llms.embedding.stapi host` as a URL
+   1. `python3.12 -m venv --system-site-packages --upgrade-deps --prompt stapi stapi`
+   2. `cd stapi`
+   3. `source ./bin/activate`
+2. Download STAPI
+   1. `git init --initial-branch=main`
+   2. `git remote add gh https://github.com/substratusai/stapi.git`
+   3. `git fetch gh main`
+   4. `git checkout main`
+3. Install dependencies (xformers is required by the model, not STAPI)
+   1. `pip install --requirement requirements.txt xformers` 
+4. add tokenization endpoints to STAPI
+   1. `wget https://raw.githubusercontent.com/luna-best/elastic-fimfarchive/refs/heads/main/stapi.patch`
+   2. `patch -p1 < stapi.patch`
+5. run STAPI: `MODEL=dunzhang/stella_en_400M_v5 uvicorn --host ${HOST} --port ${PORT} main:app`
+6. put the HOST and PORT in `vaguesearch.toml` under `llms.embedding.stapi host` as a URL
 
 <details>
 <summary>STAPI systemd unit</summary>
 
+`systemctl --user edit --full --force stapi.service`
 ```text
 [Unit]
 Description=stapi
