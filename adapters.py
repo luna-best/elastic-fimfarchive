@@ -86,6 +86,8 @@ class LlamacppAPI:
 	def __post_init__(self):
 		self.base_url = self.base_url.rstrip("/")
 		self.session = Session()
+		resp = self.session.get(f"{self.base_url}/props")
+		self.context = resp.json()["default_generation_settings"]["n_ctx"]
 
 	def tokenize(self, content: str) -> list[int]:
 		resp = self.session.post(f"{self.base_url}/tokenize", json={"content": content})
@@ -100,3 +102,22 @@ class LlamacppAPI:
 
 	def chat_response(self, prompt: Union[str, list[str], list[int], dict[str, Any]]) -> str:
 		return self.completion(prompt)["content"]
+
+	def completion2(self, system_prompt, user_prompt):
+		body = {
+			"messages": [
+				{
+					"content": system_prompt,
+					"role": "system"
+				},{
+					"content": user_prompt,
+					"role": "user"
+				}
+			]
+		}
+		resp = self.session.post(f"{self.base_url}/v1/chat/completions", json=body)
+		return resp.json()
+
+	def chat_response2(self, system: str, question: str):
+		completion = self.completion2(system, question)
+		return completion["choices"][0]["message"]["content"]

@@ -1,13 +1,33 @@
+
 [llms.embedding]
 "stapi host" = "http://${HOST}:${PORT}"
+[llms.embedding.prompt]
+s2p="""
+    Instruct: Given a web search query, retrieve relevant passages that answer the query.
+    Query:
+    """
 
 [llms.chat]
 "host" = "http://${HOST}:${PORT}"
-context = 3000
+"min answer tokens" = 768
+"system prompt" = """
+    You are a helpful assistant that provides accurate and reliable information about fiction stories.
+    You will be provided with chunks of a story that is relevant to a question.
+    Answer a question about the story using information from the chunks below.
+    Use information from multiple chunks to answer the question.
+    Ignore chunks that have no information about the question.
+    Do not make up story details that are not in the chunks,
+    Cite the chunks you use.
+"""
 
 [story.one]
-id = 62270
+id = 7335
 "relevance question" = """
 	Which scenes depict Luna and another character having a romantic or intimate moment?
 	"""
 "analysis question" = "Describe each character's relationship in the story."
+
+[story.many]
+list = "/path/to/Untitled Discover session.csv"
+"id column" = "Story Link (id)"
+log = "/an/empty/directory/for/answers"

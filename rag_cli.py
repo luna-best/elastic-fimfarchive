@@ -6,6 +6,8 @@ from pathlib import PosixPath
 from textwrap import dedent
 from collections import namedtuple
 from tomllib import load
+from csv import DictReader, Error as CSVError
+from sys import stdout
 
 from chonkie import SemanticChunker
 from configargparse import ArgParser, Namespace, FileType
@@ -14,7 +16,7 @@ from elasticsearch.dsl import connections, Q
 from adapters import STAPIEmbeddings, LlamacppAPI
 from esdocs import Chapter, Chunk, Story
 
-from typing import Type
+from typing import Type, Union
 from elasticsearch.dsl import Document
 from elasticsearch import NotFoundError
 
@@ -38,6 +40,15 @@ def load_config() -> Namespace:
 	vaguesearch = load(args.vaguesearch)
 	args.vaguesearch = vaguesearch
 	return args
+
+def setup_logging():
+	vaguelogger = logging.getLogger("vaguelogger")
+	vaguelogger.setLevel(logging.INFO)
+	stdout_stream = logging.StreamHandler(stdout)
+	print_formatter = logging.Formatter("%(message)s")
+	stdout_stream.setFormatter(print_formatter)
+	vaguelogger.addHandler(stdout_stream)
+	#logging.basicConfig(format="%(message)s", level=logging.INFO, handlers=[stdout_stream])
 
 
 def setup_elasticsearch(configuration):
@@ -82,7 +93,7 @@ def store_composable_template(doc_class: Type[Document]):
 			else:
 				new_settings[setting] = found_tmpl["settings"]["index"][setting]
 	except (NotFoundError, KeyError, IndexError):
-		print(f"Saving index template for {index_wild} with {nodes} shards")
+		vaguelogger.info(f"Saving index template for {index_wild} with {nodes} shards")
 		conn.indices.put_index_template(name=template_name, template=legacy_index_template, index_patterns=[index_wild])
 		return
 	update = False
@@ -91,7 +102,7 @@ def store_composable_template(doc_class: Type[Document]):
 	if legacy_index_template["settings"] != new_settings:
 		update = True
 	if update:
-		print(f"Saving index template for {index_wild} with {nodes} shards")
+		vaguelogger.info(f"Saving index template for {index_wild} with {nodes} shards")
 		conn.indices.put_index_template(name=template_name, template=legacy_index_template, index_patterns=[index_wild])
 
 
@@ -133,7 +144,7 @@ def reconstruct_chunks(chunks: list[Chunk], context: bool = False):
 	search = search.filter(chapter_filter)
 	resp = search.execute()
 	if resp.hits.total.value != len(chapter2get):
-		print(f"the wrong number of chapters are in ES for {search.to_dict()}")
+		vaguelogger.warning(f"the wrong number of chapters are in ES for {search.to_dict()}")
 	chapter_texts = {
 		hit.chapter.number: hit.chapter.text
 		for hit in resp.hits
@@ -162,11 +173,11 @@ def embed_story(embedder: STAPIEmbeddings, story_id: int):
 	chunker = SemanticChunker(embedding_model=embedder, chunk_size=512, skip_window=2)
 	story, offsets = load_story(story_id)
 	step = time()
-	print(f"{step - start:.2f}s loading story")
+	vaguelogger.info(f"{step - start:.2f}s loading story")
 	start = step
 	chunked = chunker.chunk(story)
 	step = time()
-	print(f"{step - start:.2f}s chunking")
+	vaguelogger.info(f"{step - start:.2f}s chunking")
 	start = step
 	for i, chunk in enumerate(chunked):
 		es_chunk = Chunk(order=i)
@@ -193,18 +204,103 @@ def embed_story(embedder: STAPIEmbeddings, story_id: int):
 			chunk.doc.embeddings = embedding
 			chunk.doc.save(index=f"<{chunk.doc._index._name[:-1]}" + "{now/d}>")
 	step = time()
-	print(f"{step - start:.2f}s embedding")
+	vaguelogger.info(f"{step - start:.2f}s embedding")
 
+
+def wring_rag(story_id: int, params: dict, embedder: STAPIEmbeddings, chatter: LlamacppAPI):
+	embed_story(embedder, story_id)
+	prompt = params["llms"]["embedding"]["prompt"]["s2p"]
+	prompt = dedent(prompt)
+	prompt = prompt.strip() + " "
+	relevance_query = params["story"]["one"]["relevance question"]
+	relevance_query = dedent(relevance_query)
+	relevance_query = prompt + relevance_query.strip()
+	start = time()
+	relevance_vector = embedder.final_embed([relevance_query])[0]
+	Chunk._index.refresh()
+	try:
+		chunks = Chunk.find_related(story_id, relevance_vector)
+		step = time()
+		vaguelogger.info(f"{step - start:.2f}s retrieving")
+		start = time()
+	except ValueError:
+		vaguelogger.warning(f"No semantically related chunks found for {story_id}.")
+		return
+	system_prompt = dedent(params["llms"]["chat"]["system prompt"]).strip()
+	user_question = dedent(params["story"]["one"]["analysis question"]).strip()
+	if user_question == "relevance question":
+		user_question = dedent(params["story"]["one"]["relevance question"]).strip()
+
+	rag_chunks = ""
+	chat_tokens = chatter.count_tokens(system_prompt.format(chunks="")) + chatter.count_tokens(
+		user_question) + 10
+	max_prompt = chatter.context - params["llms"]["chat"]["min answer tokens"]
+	for chunk in chunks:
+		chat_tokens += chatter.count_tokens(chunk.as_blob())
+		if chat_tokens > max_prompt:
+			break
+		chunk.to_chat = True
+		rag_chunks += chunk.as_blob()
+
+	system_prompt = system_prompt.format(chunks=rag_chunks)
+	#chat_response = chatter.chat_response(system_prompt + user_question)
+	chat_response = chatter.chat_response2(system_prompt, user_question)
+	step = time()
+	vaguelogger.info(f"{step - start:.2f}s asking")
+	story_title = Story.get_title_lite(story_id) + ".txt"
+	answer_path = PosixPath(params["story"]["many"]["log"])
+	if not answer_path.is_absolute():
+		prefix = PosixPath(__file__)
+		answer_path = prefix / answer_path
+	if not answer_path.is_dir():
+		vaguelogger.error(f"The output path must exist: {answer_path}")
+		exit(1)
+	answer_path = answer_path / story_title.replace("/", "_")
+
+	with answer_path.open("w") as fp:
+		fp.write(user_question)
+		fp.write("\n==================================================\n")
+		fp.write(chat_response)
+		fp.write("\n==================================================\n")
+		for chunk in chunks:
+			fp.write(chunk.as_blob(True))
+
+def load_csv_maybe(csv_path: str, column: str) -> Union[list[int], bool]:
+	csv_in_path = PosixPath(csv_path)
+	if not csv_in_path.is_absolute():
+		prefix = PosixPath(__file__)
+		csv_in_path = prefix / csv_in_path
+	if not csv_in_path.exists():
+		return False
+	try:
+		with csv_in_path.open(newline="") as csv_in_fp:
+			csv_in = DictReader(csv_in_fp)
+			story_ids = [
+				int(row[column])
+				for row in csv_in
+			]
+			return story_ids
+	except (KeyError, CSVError):
+		return False
 
 if __name__ == "__main__":
 	step = time()
-	print(f"{step - start:.2f}s loading")
+	setup_logging()
+	vaguelogger = logging.getLogger("vaguelogger")
+	vaguelogger.info(f"{step - start:.2f}s loading")
 	my_config = load_config()
 	setup_elasticsearch(my_config)
 
 	embedder = STAPIEmbeddings(my_config.vaguesearch["llms"]["embedding"]["stapi host"])
 
 	llama_cpp_client = LlamacppAPI(my_config.vaguesearch["llms"]["chat"]["host"])
+
+	story_ids_maybe = load_csv_maybe(my_config.vaguesearch["story"]["many"]["list"],
+									 my_config.vaguesearch["story"]["many"]["id column"])
+	if story_ids_maybe:
+		for story in story_ids_maybe:
+			wring_rag(story, my_config.vaguesearch, embedder, llama_cpp_client)
+		exit()
 	embed_story(embedder, my_config.vaguesearch["story"]["one"]["id"])
 
 	prompt = """
@@ -220,36 +316,30 @@ if __name__ == "__main__":
 	try:
 		chunks = Chunk.find_related(my_config.vaguesearch["story"]["one"]["id"], prompt_embed)
 	except ValueError:
-		print("No semantically related chunks found.")
+		vaguelogger.error("No semantically related chunks found.")
 		exit(1)
 	step = time()
-	print(f"{step - start:.2f}s retrieving")
+	vaguelogger.info(f"{step - start:.2f}s retrieving")
 	start = step
 
-	system_prompt = dedent("""
-	You are a helpful assistant that provides accurate and reliable information about fiction stories.
-	You will be provided with chunks of a story that is relevant to a question.
-	Answer a question about the story using information from the chunks below.
-	Use information from multiple chunks to answer the question.
-	Ignore chunks that have no information about the question.
-	You do not hallucinate information and always cite the chunks you use.
-	{chunks}
-	""").strip()
+	system_prompt = dedent(my_config.vaguesearch["llms"]["chat"]["system prompt"]).strip()
 	user_question = dedent(my_config.vaguesearch["story"]["one"]["analysis question"]).strip()
 	if user_question == "relevance question":
 		user_question = dedent(my_config.vaguesearch["story"]["one"]["relevance question"]).strip()
 
 	rag_chunks = ""
 	chat_tokens = llama_cpp_client.count_tokens(system_prompt.format(chunks="")) + llama_cpp_client.count_tokens(user_question) + 10
+	max_prompt = llama_cpp_client.context - my_config.vaguesearch["llms"]["chat"]["min answer tokens"]
 	for chunk in chunks:
 		chat_tokens += llama_cpp_client.count_tokens(chunk.as_blob())
-		if chat_tokens > my_config.vaguesearch["llms"]["chat"]["context"]:
+		if chat_tokens > max_prompt:
 			break
 		chunk.to_chat = True
 		rag_chunks += chunk.as_blob()
 
 	system_prompt = system_prompt.format(chunks=rag_chunks)
-	chat_response = llama_cpp_client.chat_response(system_prompt + user_question)
+	#chat_response = llama_cpp_client.chat_response(system_prompt + user_question)
+	chat_response = llama_cpp_client.chat_response2(system_prompt, user_question)
 
 	with open("ragout.txt", "w") as fp:
 		fp.write(user_question)
@@ -259,4 +349,4 @@ if __name__ == "__main__":
 		for chunk in chunks:
 			fp.write(chunk.as_blob(True))
 	step = time()
-	print(f"{step - start:.2f}s answering")
+	vaguelogger.info(f"{step - start:.2f}s answering")

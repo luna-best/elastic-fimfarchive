@@ -24,7 +24,7 @@ this script writes to the `chunks-*` index pattern, and requires the following p
 
 ### STAPI
 
-The embedding model I chose, [stella](https://huggingface.co/dunzhang/stella_en_400M_v5), is hard to use at 
+The embedding model I chose, [Qwen3-Embedding](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B), is hard to use at 
 abstraction layers above sentence-transformers. As such, the simple 
 [Sentence Transformers API](https://github.com/substratusai/stapi) is used as the backend server which provides
 embeddings.  Even so, STAPI does not work correctly due to the way stella functions. Specifically, stella's embedder
@@ -46,7 +46,7 @@ in its input.
 4. add tokenization endpoints to STAPI
    1. `wget https://raw.githubusercontent.com/luna-best/elastic-fimfarchive/refs/heads/main/stapi.patch`
    2. `patch -p1 < stapi.patch`
-5. run STAPI: `MODEL=dunzhang/stella_en_400M_v5 uvicorn --host ${HOST} --port ${PORT} main:app`
+5. run STAPI: `MODEL=Qwen/Qwen3-Embedding-0.6B uvicorn --host ${HOST} --port ${PORT} main:app`
 6. put the HOST and PORT in `vaguesearch.toml` under `llms.embedding.stapi host` as a URL
 
 <details>
@@ -59,9 +59,9 @@ Description=stapi
 
 [Service]
 Type=simple
-ExecStart=/.../stapi/bin/uvicorn --host ... --port ... --env-file stella.env main:app
+ExecStart=/.../stapi/bin/uvicorn --host ... --port ... main:app
 WorkingDirectory=/.../stapi
-Environment="MODEL=dunzhang/stella_en_400M_v5"
+Environment="MODEL=Qwen/Qwen3-Embedding-0.6B"
 ```
 </details>
 
@@ -95,7 +95,7 @@ Environment="LLAMA_ARG_PORT=..."
 
 </details>
 
-## Running the search
+## Running the search on a single story
 
 In `vaguesearch.toml`, under the section `story.one`, set `id` to the story ID you want to query.
 
@@ -118,6 +118,19 @@ The chunk header fields are:
 * The similarity score as a floating point
 * The distance into the chapter in which the chunk exists (e.g. 0% at the beginning, 99% at the end)
 * The chapter link on FiMFiction if it is not deleted, else FiMFetch (for convenient manual review)
+
+## Running the search on a batch of stories
+
+In `vaguesearch.toml` under the section `story.many`, set `list` to a path to a CSV file that contains at least 
+one column of story IDs.  Set `id column` to the name of that column. Finally, set `log` to an empty directory.
+Run the same command (`python rag_cli.py --vaguesearch vaguesearch.toml`), and, as long as the .csv file exists, 
+the script will run in batch.
+
+## Web UI
+
+Run `pip install nicegui` and then run `python vaguesearch.py --vaguesearch vaguesearch.toml` for a basic web UI.
+The web UI has some creature comforts like highlighting an already-embedded story as green, and folding the
+returned chunks.  Unlike the CLI, the output is not saved. If batch asking, it's a good idea to pre-embed the stories.
 
 ## RAG process
 

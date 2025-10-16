@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 
 from elasticsearch import dsl as es_dsl_types
 from elasticsearch.dsl import Q
+from elasticsearch.exceptions import NotFoundError
 from ebooklib.epub import EpubHtml
 from statsmodels.stats.proportion import proportion_confint
 from typing import Union, Iterable, SupportsIndex
@@ -297,6 +298,19 @@ class Story(es_dsl_types.Document):
 		except AttributeError:
 			raise ValueError(f"Story ID {story_id} does not have deletion flag?")
 
+	@classmethod
+	def get_title_lite(cls, story_id: int) -> str:
+		story_search = cls.search()
+		story_search = story_search.filter(Q("term", id=story_id))
+		story_search = story_search.params(filter_path="hits.hits._source.title,hits.total.value")
+		story_search = story_search.extra(source=["title"], size=1)
+		search_result = story_search.execute()
+		try:
+			return search_result.hits[0].title
+		except (NotFoundError, KeyError):
+			raise ValueError(f"{story_id} not found")
+
+
 
 class DocChunkStory(es_dsl_types.InnerDoc):
 	id = es_dsl_types.Integer(meta={"source": "id"})
@@ -336,7 +350,7 @@ class Chunk(es_dsl_types.Document):
 				slice_end = chunk.chapter.end[i]
 				segment += chapter_texts[chapter][slice_start:slice_end]
 				if not hasattr(chunk, "pcent"):
-					chunk.pcent = f"{slice_start / len(chapter_texts[chapter]):.0%}"
+					chunk.pcent = slice_start / len(chapter_texts[chapter])
 			if Story.is_deleted(story_id):
 				chunk.link = f"https://fimfetch.net/story/{story_id}/a/{chunk.chapter.number[0]}"
 			else:
@@ -358,7 +372,7 @@ class Chunk(es_dsl_types.Document):
 			# https://www.elastic.co/docs/reference/elasticsearch/mapping-reference/dense-vector
 			# inverse of cosine: (1 + cosine(query, vector)) / 2
 			relevance = (2 * self.meta.score) - 1
-			blob = f"Chunk {self.order} {relevance:0.7f}{"" if included else " over context"} @{self.pcent} into {self.link}\n"
+			blob = f"Chunk {self.order} {relevance:0.7f}{"" if included else " over context"} @{self.pcent:.0%} into {self.link}\n"
 		else:
 			blob = f"Chunk {self.order}\n"
 		blob += f"{self.text}\n"
